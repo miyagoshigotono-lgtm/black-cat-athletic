@@ -8,8 +8,16 @@
  *  4. 外周の内側に収まっているか
  *  5. 開始地点で猫が箱と重ならないか（どの向きでも重ならないよう、回転の外接円で判定）
  *  6. 隙間・トンネルの寸法が意図どおりか（通れる／通れない／中で振り向けるか）
+ *  7. 爪の対象：金網は 1〜5 の対象に含める。ドアは戸口に収まり、開閉の途中で壁に当たらないか
  */
-import { PROTO_COURSE, CAT_WIDTH, CAT_HEIGHT, CAT_LENGTH, START_POSITION, type BoxDef } from '../src/greybox/protoCourseData.ts';
+import { PROTO_COURSE as COURSE_BOXES, CAT_WIDTH, CAT_HEIGHT, CAT_LENGTH, START_POSITION, type BoxDef } from '../src/greybox/protoCourseData.ts';
+import { PROTO_INTERACTABLES, type DoorDef } from '../src/greybox/protoInteractables.ts';
+
+/** 静的な箱＋金網（金網も動かない箱として検算する） */
+const PROTO_COURSE: BoxDef[] = [
+  ...COURSE_BOXES,
+  ...PROTO_INTERACTABLES.filter((d) => d.kind === 'climbable').map((d) => ({ name: d.name, x: d.x, z: d.z, w: d.w, d: d.d, top: d.top, h: d.h, color: 'fence' as const })),
+];
 
 const EPS = 1e-6;
 const errors: string[] = [];
@@ -125,6 +133,48 @@ infos.push(`L字通路：縦 幅 ${fmt(corridorWidth)}、横 幅 ${fmt(corridorW
 
 const tableUnder = byName('机・天板').minY;
 infos.push(`机：天板の下 ${fmt(tableUnder)}（猫の全高 ${fmt(catHeight)} → ${tableUnder > catHeight ? 'くぐれる' : 'くぐれない'}）`);
+
+// 7. ドア
+for (const door of PROTO_INTERACTABLES.filter((d): d is DoorDef => d.kind === 'door')) {
+  const bottom = door.bottomGap;
+  const top = door.bottomGap + door.height;
+  /** 開き角 angle のときの板の四隅（上から見た XZ） */
+  const corners = (angle: number) => {
+    const yaw = door.baseYaw + angle;
+    const c = Math.cos(yaw), s = Math.sin(yaw);
+    const pts: Array<[number, number]> = [];
+    for (const lx of [0, door.width]) for (const lz of [-door.thickness / 2, door.thickness / 2]) {
+      // Y軸回りの回転：x' = x cos + z sin、z' = -x sin + z cos
+      pts.push([door.hingeX + lx * c + lz * s, door.hingeZ - lx * s + lz * c]);
+    }
+    return pts;
+  };
+  /** 板の輪郭上の点（辺を細かく分割）がいずれかの箱の内部に入るか */
+  const hitsBox = (angle: number): string | null => {
+    const cs = corners(angle);
+    const order = [0, 1, 3, 2, 0];
+    for (let e = 0; e < 4; e++) {
+      const [ax, az] = cs[order[e]], [bx, bz] = cs[order[e + 1]];
+      for (let t = 0; t <= 1.0001; t += 0.05) {
+        const px = ax + (bx - ax) * t, pz = az + (bz - az) * t;
+        for (const b of PROTO_COURSE) {
+          if (b.isGround) continue;
+          const a = aabb(b);
+          if (px > a.minX + EPS && px < a.maxX - EPS && pz > a.minZ + EPS && pz < a.maxZ - EPS
+            && top > a.minY + EPS && bottom < a.maxY - EPS) return b.name;
+        }
+      }
+    }
+    return null;
+  };
+  let blocked: string | null = null;
+  for (let deg = -90; deg <= 90; deg += 2) {
+    const hit = hitsBox((deg * Math.PI) / 180);
+    if (hit) { blocked = `${deg}° で ${hit}`; break; }
+  }
+  if (blocked) errors.push(`${door.name}：開閉の途中で壁に当たる（${blocked}）`);
+  else infos.push(`${door.name}：閉 → ±90° の開閉で壁に当たらない（幅 ${fmt(door.width)}、高さ ${fmt(door.height)}）`);
+}
 
 console.log('--- 情報 ---');
 for (const s of infos) console.log('  ' + s);

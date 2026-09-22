@@ -14,6 +14,10 @@ import { DebugHud } from '../ui/DebugHud';
 import { OrientationOverlay } from '../ui/OrientationOverlay';
 import { buildProtoCourse } from '../greybox/ProtoCourse';
 import { START_POSITION } from '../greybox/protoCourseData';
+import { PROTO_INTERACTABLES } from '../greybox/protoInteractables';
+import { InteractionSystem } from '../interact/InteractionSystem';
+import { ScratchMarks } from '../interact/ScratchMarks';
+import { createInteractable } from '../interact/registry';
 
 /** 物理の固定刻み [s] */
 const FIXED_DT = 1 / 60;
@@ -44,6 +48,8 @@ export class Game {
   private readonly touchControls: TouchControls;
   private readonly hud: DebugHud;
   private readonly lockHint: HTMLDivElement;
+  private readonly interactions: InteractionSystem;
+  private readonly scratches: ScratchMarks;
 
   private accumulator = 0;
   private lastTime = 0;
@@ -70,8 +76,14 @@ export class Game {
     // --- ワールド ---
     buildProtoCourse(this.scene, this.physics);
     this.cat = new CatController(this.physics.world, START_POSITION);
+    this.scratches = new ScratchMarks(this.scene);
+    this.interactions = new InteractionSystem(this.physics.world, this.cat, this.scratches);
+    for (const def of PROTO_INTERACTABLES) {
+      this.interactions.add(createInteractable(def, this.physics, this.scene));
+    }
     this.physics.refreshQueries();
     this.catView = new CatView(this.scene);
+    this.interactions.onSwipe = () => this.catView.playSwipe();
     this.rig = new CameraRig(new PlayCamera(camera, this.physics.world, this.cat.collider));
 
     // --- 入力と UI ---
@@ -119,6 +131,8 @@ export class Game {
     this.accumulator += dt;
     let steps = 0;
     while (this.accumulator >= FIXED_DT && steps < MAX_STEPS_PER_FRAME) {
+      // 爪の処理（登りの開始・終了、ドアの開閉など）→ 猫の移動 → 物理
+      this.interactions.fixedUpdate(FIXED_DT, this.input);
       this.cat.fixedUpdate(FIXED_DT, this.input, this.rig.controlYaw);
       this.physics.step(FIXED_DT);
       this.accumulator -= FIXED_DT;
@@ -133,23 +147,25 @@ export class Game {
     const alpha = this.accumulator / FIXED_DT;
     this.cat.getInterpolatedCenter(alpha, this.catCenter);
     this.rig.update(dt, this.input, this.catCenter);
-    const v = this.cat.velocity;
     this.catView.update(
       dt,
       this.physics.world,
       this.cat.collider,
       this.catCenter,
       this.cat.facing,
+      this.cat.pitch,
       this.rig.play.catOpacity,
-      Math.hypot(v.x, v.z),
-      this.cat.grounded,
+      this.cat.animSpeed,
+      this.cat.supported,
     );
+    this.scratches.update(dt);
 
     this.renderer.render(this.scene, this.rig.camera);
 
     this.hud.setExtra(
-      `足元 (${foot.x.toFixed(2)}, ${foot.y.toFixed(2)}, ${foot.z.toFixed(2)}) ${this.cat.grounded ? '接地' : '空中'}\n` +
-      `水平速度 ${Math.hypot(v.x, v.z).toFixed(2)} m/s / カメラ距離 ${this.rig.play.currentDistance.toFixed(2)} m`,
+      `足元 (${foot.x.toFixed(2)}, ${foot.y.toFixed(2)}, ${foot.z.toFixed(2)}) ${this.cat.isClimbing ? '登り' : this.cat.grounded ? '接地' : '空中'}\n` +
+      `爪：${this.interactions.lastResult}\n` +
+      `速さ ${this.cat.animSpeed.toFixed(2)} m/s / カメラ距離 ${this.rig.play.currentDistance.toFixed(2)} m`,
     );
     this.hud.update(dt, this.renderer);
   }
@@ -211,6 +227,6 @@ export class Game {
 
   /** 開発時の確認用（コンソールから状態を見る） */
   get debug() {
-    return { cat: this.cat, rig: this.rig, input: this.input, renderer: this.renderer, physics: this.physics };
+    return { cat: this.cat, rig: this.rig, input: this.input, renderer: this.renderer, physics: this.physics, interactions: this.interactions };
   }
 }

@@ -15,7 +15,13 @@ import { CAT_SHAPE } from './CatParams';
  *   （足先の角は歩きで z ±0.208、空中姿勢で最大 z 0.212。範囲は ±0.22）。
  * - 足運びは猫の常歩（左後 → 左前 → 右後 → 右前 を 1/4 周期ずつずらす）。
  * - 空中では前脚を前へ、後脚を後ろへ伸ばす。
+ * - 爪を出したときは右前脚で引っかく仕草をする（SPEC 6.2）。
+ * - 登り状態では体を縦（頭が上）にする。姿勢の切り替えは見た目だけなめらかにつなぐ。
  */
+
+/** 引っかく仕草の長さ [s] と、前脚を振り上げる角度 [rad] */
+const SWIPE_DURATION = 0.3;
+const SWIPE_ANGLE = 1.4;
 
 /** 脚1本分の情報 */
 interface Leg {
@@ -40,6 +46,7 @@ const WALK = {
   /** 胴の上下動 [m] */
   bob: 0.004,
 };
+
 export class CatView {
   readonly root = new THREE.Group();
   /** 胴・頭・尻尾（上下に揺らす部分） */
@@ -52,6 +59,10 @@ export class CatView {
   private walkBlend = 0;
   private airBlend = 0;
   private time = 0;
+  /** 引っかく仕草の経過時間（仕草中でなければ負） */
+  private swipeTime = -1;
+  /** 見た目の傾き（当たり判定の傾きへなめらかに追いつく） */
+  private visualPitch = 0;
   private readonly materials: THREE.MeshLambertMaterial[] = [];
   private readonly shadowRoot = new THREE.Group();
   private readonly shadowMat: THREE.MeshBasicMaterial;
@@ -124,6 +135,7 @@ export class CatView {
   /**
    * @param center 補間済みの当たり判定の中心
    * @param facing 猫の向き（Y軸回り）
+   * @param pitch 体の傾き（0 = 四つ足、π/2 = 登り姿勢）
    * @param opacity カメラが近いときの不透明度（0 で非表示）
    * @param speed 水平方向の速さ [m/s]（歩きアニメーション用）
    * @param grounded 接地しているか
@@ -134,12 +146,14 @@ export class CatView {
     catCollider: RAPIER.Collider,
     center: THREE.Vector3,
     facing: number,
+    pitch: number,
     opacity: number,
     speed: number,
     grounded: boolean,
   ): void {
     this.root.position.copy(center);
-    this.root.rotation.y = facing;
+    this.visualPitch += (pitch - this.visualPitch) * (1 - Math.exp(-18 * dt));
+    this.root.rotation.set(this.visualPitch, facing, 0, 'YXZ');
     this.animate(dt, speed, grounded);
 
     this.root.visible = opacity > 0.01;
@@ -166,6 +180,11 @@ export class CatView {
     }
   }
 
+  /** 引っかく仕草を始める */
+  playSwipe(): void {
+    this.swipeTime = 0;
+  }
+
   /** 歩き・空中の姿勢と尻尾の揺れ */
   private animate(dt: number, speed: number, grounded: boolean): void {
     this.time += dt;
@@ -181,6 +200,18 @@ export class CatView {
       const walk = Math.sin((this.phase + leg.phaseOffset) * Math.PI * 2) * WALK.swingAngle * this.walkBlend;
       const air = leg.front ? WALK.airFront : WALK.airHind;
       leg.pivot.rotation.x = THREE.MathUtils.lerp(walk, air, this.airBlend);
+    }
+
+    // 引っかく仕草：右前脚を前へ振り上げて戻す（山なりの動き）
+    if (this.swipeTime >= 0) {
+      this.swipeTime += dt;
+      const t = this.swipeTime / SWIPE_DURATION;
+      if (t >= 1) {
+        this.swipeTime = -1;
+      } else {
+        const rightFront = this.legs[3];
+        rightFront.pivot.rotation.x = Math.sin(t * Math.PI) * SWIPE_ANGLE;
+      }
     }
 
     // 胴は1周期に2回、わずかに上下する
