@@ -6,10 +6,10 @@
  *  2. 宙に浮いている箱がないか（底面が地面 y=0、または他の箱の上面に接し、XZ で重なっていること）
  *  3. 箱同士がめり込んでいないか（接しているのは可）
  *  4. 外周の内側に収まっているか
- *  5. 開始地点で猫カプセルが箱と重ならないか
- *  6. 隙間・トンネルの寸法が意図どおりか（通れる／通れない）
+ *  5. 開始地点で猫が箱と重ならないか（どの向きでも重ならないよう、回転の外接円で判定）
+ *  6. 隙間・トンネルの寸法が意図どおりか（通れる／通れない／中で振り向けるか）
  */
-import { PROTO_COURSE, CAT_RADIUS, CAT_HALF_HEIGHT, START_POSITION, type BoxDef } from '../src/greybox/protoCourseData.ts';
+import { PROTO_COURSE, CAT_WIDTH, CAT_HEIGHT, CAT_LENGTH, START_POSITION, type BoxDef } from '../src/greybox/protoCourseData.ts';
 
 const EPS = 1e-6;
 const errors: string[] = [];
@@ -77,12 +77,16 @@ for (const b of PROTO_COURSE) {
   }
 }
 
-// 5. 開始地点（猫カプセルを外接 AABB で近似）
-const catHeight = 2 * (CAT_HALF_HEIGHT + CAT_RADIUS);
+// 5. 開始地点（猫は Y 軸回りに回るので、水平方向は対角線の半分を半径とする正方形で近似）
+const catHeight = CAT_HEIGHT;
+const catWidth = CAT_WIDTH;
+/** 振り向くのに必要な幅 = 体の水平方向の対角線 */
+const catTurnDiameter = Math.hypot(CAT_WIDTH, CAT_LENGTH);
+const turnR = catTurnDiameter / 2;
 const cat: Aabb = {
-  minX: START_POSITION.x - CAT_RADIUS, maxX: START_POSITION.x + CAT_RADIUS,
+  minX: START_POSITION.x - turnR, maxX: START_POSITION.x + turnR,
   minY: START_POSITION.y, maxY: START_POSITION.y + catHeight,
-  minZ: START_POSITION.z - CAT_RADIUS, maxZ: START_POSITION.z + CAT_RADIUS,
+  minZ: START_POSITION.z - turnR, maxZ: START_POSITION.z + turnR,
 };
 for (const b of PROTO_COURSE) {
   if (b.isGround) continue;
@@ -100,23 +104,24 @@ const byName = (n: string) => {
   if (!b) throw new Error(`箱が見つからない: ${n}`);
   return aabb(b);
 };
-const catDiameter = CAT_RADIUS * 2;
 const gap1 = byName('隙間塀2').minX - byName('隙間塀1').maxX;
 const gap2 = byName('隙間塀3').minX - byName('隙間塀2').maxX;
-infos.push(`猫：直径 ${fmt(catDiameter)}、全高 ${fmt(catHeight)}`);
-infos.push(`隙間1：幅 ${fmt(gap1)} → ${gap1 > catDiameter ? '通れる' : '通れない'}`);
-infos.push(`隙間2：幅 ${fmt(gap2)} → ${gap2 > catDiameter ? '通れる' : '通れない'}`);
-if (!(gap1 > catDiameter)) errors.push('隙間1は通れる想定だが猫の直径以下');
-if (!(gap2 < catDiameter)) errors.push('隙間2は通れない想定だが猫の直径以上');
+infos.push(`猫：幅 ${fmt(catWidth)}、高さ ${fmt(catHeight)}、長さ ${fmt(CAT_LENGTH)}（振り向くのに必要な幅 ${fmt(catTurnDiameter)}）`);
+infos.push(`隙間1：幅 ${fmt(gap1)} → ${gap1 > catWidth ? '通れる' : '通れない'}`);
+infos.push(`隙間2：幅 ${fmt(gap2)} → ${gap2 > catWidth ? '通れる' : '通れない'}`);
+if (!(gap1 > catWidth)) errors.push('隙間1は通れる想定だが猫の幅以下');
+if (!(gap2 < catWidth)) errors.push('隙間2は通れない想定だが猫の幅以上');
 
 const tunnelWidth = byName('トンネル右壁').minX - byName('トンネル左壁').maxX;
 const tunnelHeight = byName('トンネル天井').minY;
-infos.push(`トンネル：内寸 幅 ${fmt(tunnelWidth)} × 高さ ${fmt(tunnelHeight)} → ${tunnelWidth > catDiameter && tunnelHeight > catHeight ? '通れる' : '通れない'}`);
-if (!(tunnelWidth > catDiameter && tunnelHeight > catHeight)) errors.push('トンネルを猫が通れない');
+const tunnelPass = tunnelWidth > catWidth && tunnelHeight > catHeight;
+infos.push(`トンネル：内寸 幅 ${fmt(tunnelWidth)} × 高さ ${fmt(tunnelHeight)} → ${tunnelPass ? '通れる' : '通れない'}、中で${tunnelWidth > catTurnDiameter ? '振り向ける' : '振り向けない'}`);
+if (!tunnelPass) errors.push('トンネルを猫が通れない');
 
 const corridorWidth = byName('通路東壁').minX - byName('通路西壁').maxX;
 const corridorWidth2 = byName('通路北壁').minZ - byName('通路南壁').maxZ;
-infos.push(`L字通路：縦 幅 ${fmt(corridorWidth)}、横 幅 ${fmt(corridorWidth2)}`);
+const corridorTurn = Math.min(corridorWidth, corridorWidth2) > catTurnDiameter;
+infos.push(`L字通路：縦 幅 ${fmt(corridorWidth)}、横 幅 ${fmt(corridorWidth2)} → 中で${corridorTurn ? '振り向ける' : '振り向けない'}`);
 
 const tableUnder = byName('机・天板').minY;
 infos.push(`机：天板の下 ${fmt(tableUnder)}（猫の全高 ${fmt(catHeight)} → ${tableUnder > catHeight ? 'くぐれる' : 'くぐれない'}）`);

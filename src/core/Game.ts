@@ -65,7 +65,7 @@ export class Game {
     this.scene.add(sun);
 
     // ニアクリップを小さくして、狭所でカメラが壁に寄っても手前が欠けにくくする
-    const camera = new THREE.PerspectiveCamera(60, window.innerWidth / window.innerHeight, 0.05, 120);
+    const camera = new THREE.PerspectiveCamera(60, window.innerWidth / window.innerHeight, 0.03, 120);
 
     // --- ワールド ---
     buildProtoCourse(this.scene, this.physics);
