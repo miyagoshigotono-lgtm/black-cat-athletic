@@ -1,0 +1,9 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
+  <!-- 仮アイコン：黒猫の顔シルエット -->
+  <rect width="512" height="512" fill="#f2c14e"/>
+  <path d="M136 132 L196 212 L316 212 L376 132 L392 300 C392 382 330 430 256 430 C182 430 120 382 120 300 Z" fill="#141414"/>
+  <ellipse cx="206" cy="300" rx="22" ry="30" fill="#f2c14e"/>
+  <ellipse cx="306" cy="300" rx="22" ry="30" fill="#f2c14e"/>
+  <ellipse cx="206" cy="304" rx="8" ry="22" fill="#141414"/>
+  <ellipse cx="306" cy="304" rx="8" ry="22" fill="#141414"/>
+</svg>

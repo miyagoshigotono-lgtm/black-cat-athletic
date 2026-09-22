@@ -1,0 +1,174 @@
+/* 画面全体：スクロール・拡大・長押し選択をすべて止める */
+html,
+body {
+  margin: 0;
+  padding: 0;
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+  background: #101014;
+  color: #eee;
+  font-family: system-ui, -apple-system, 'Hiragino Sans', 'Noto Sans JP', sans-serif;
+  touch-action: none;
+  user-select: none;
+  -webkit-user-select: none;
+  -webkit-touch-callout: none;
+  -webkit-tap-highlight-color: transparent;
+  overscroll-behavior: none;
+}
+
+#app {
+  position: fixed;
+  inset: 0;
+}
+
+#app canvas {
+  display: block;
+  width: 100%;
+  height: 100%;
+  touch-action: none;
+}
+
+#loading {
+  position: fixed;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 18px;
+  background: #101014;
+  z-index: 50;
+}
+
+#loading.hidden {
+  display: none;
+}
+
+/* ---------- 性能計測表示 ---------- */
+.debug-hud {
+  position: fixed;
+  top: calc(env(safe-area-inset-top) + 6px);
+  left: calc(env(safe-area-inset-left) + 6px);
+  padding: 4px 8px;
+  font: 11px/1.45 ui-monospace, 'SFMono-Regular', Menlo, Consolas, monospace;
+  white-space: pre;
+  background: rgba(0, 0, 0, 0.5);
+  border-radius: 4px;
+  pointer-events: none;
+  z-index: 20;
+}
+
+/* ---------- PC：ポインターロックの案内 ---------- */
+.lock-hint {
+  position: fixed;
+  left: 50%;
+  bottom: 12%;
+  transform: translateX(-50%);
+  padding: 10px 18px;
+  font-size: 15px;
+  background: rgba(0, 0, 0, 0.6);
+  border-radius: 8px;
+  pointer-events: none;
+  z-index: 20;
+}
+
+.lock-hint.hidden {
+  display: none;
+}
+
+/* ---------- スマホ用操作 ---------- */
+.touch-layer {
+  position: fixed;
+  inset: 0;
+  display: none;
+  z-index: 10;
+}
+
+.touch-layer.visible {
+  display: block;
+}
+
+.joy-base {
+  position: absolute;
+  width: 112px;
+  height: 112px;
+  margin: -56px 0 0 -56px;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.12);
+  border: 2px solid rgba(255, 255, 255, 0.35);
+  pointer-events: none;
+}
+
+.joy-knob {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 48px;
+  height: 48px;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.45);
+  transform: translate(-50%, -50%);
+}
+
+/* ボタンは右下に小さめにまとめ、画面を大きく隠さない */
+.touch-btn {
+  position: absolute;
+  border: 2px solid rgba(255, 255, 255, 0.45);
+  border-radius: 50%;
+  background: rgba(20, 20, 24, 0.35);
+  color: rgba(255, 255, 255, 0.9);
+  font: bold 13px system-ui, sans-serif;
+  padding: 0;
+  outline: none;
+  touch-action: none;
+}
+
+.touch-btn.pressed {
+  background: rgba(255, 255, 255, 0.35);
+}
+
+.touch-btn-jump {
+  width: 76px;
+  height: 76px;
+  right: calc(env(safe-area-inset-right) + 20px);
+  bottom: calc(env(safe-area-inset-bottom) + 20px);
+}
+
+.touch-btn-claw {
+  width: 60px;
+  height: 60px;
+  right: calc(env(safe-area-inset-right) + 110px);
+  bottom: calc(env(safe-area-inset-bottom) + 44px);
+  font-size: 16px;
+}
+
+/* ---------- 縦向き時の案内（タッチ主体の端末のみ） ---------- */
+.orientation-overlay {
+  display: none;
+}
+
+@media (orientation: portrait) and (pointer: coarse) {
+  .orientation-overlay {
+    position: fixed;
+    inset: 0;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 16px;
+    font-size: 18px;
+    background: #101014;
+    z-index: 100;
+  }
+}
+
+.orientation-icon {
+  font-size: 48px;
+}
+
+/* デバッグパネル（lil-gui）はHUDと重ならない右上に */
+.lil-gui.root {
+  top: env(safe-area-inset-top) !important;
+  right: env(safe-area-inset-right) !important;
+  z-index: 30 !important;
+}
