@@ -1,6 +1,7 @@
 import RAPIER from '@dimforge/rapier3d-compat';
 import './style.css';
 import { Game } from './core/Game';
+import { getStageFromUrl } from './stages';
 
 async function boot(): Promise<void> {
   // Rapier（WASM埋め込み版）は使う前に初期化が必要
@@ -9,7 +10,7 @@ async function boot(): Promise<void> {
   const container = document.getElementById('app');
   if (!container) throw new Error('#app が見つかりません');
 
-  const game = new Game(container);
+  const game = new Game(container, getStageFromUrl());
   game.start();
   document.getElementById('loading')?.classList.add('hidden');
 

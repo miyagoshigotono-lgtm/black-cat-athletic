@@ -11,27 +11,9 @@
  * このファイルは他のモジュールに依存しない（Node から直接検算できるようにするため）。
  */
 
-export type BoxColor = 'ground' | 'wall' | 'step' | 'platform' | 'fence' | 'furniture' | 'tunnel';
+import type { BoxColor, BoxDef } from '../stages/stageTypes';
 
-export interface BoxDef {
-  /** 識別名（検算ログ用） */
-  name: string;
-  /** 中心の X */
-  x: number;
-  /** 中心の Z */
-  z: number;
-  /** X 方向の幅 */
-  w: number;
-  /** Z 方向の奥行き */
-  d: number;
-  /** 上面の高さ */
-  top: number;
-  /** 厚み（Y 方向） */
-  h: number;
-  color: BoxColor;
-  /** 地面そのもの（支持判定の対象外） */
-  isGround?: boolean;
-}
+export type { BoxDef };
 
 /**
  * 猫の当たり判定の外寸（四本脚の体に合わせた角丸の箱）。

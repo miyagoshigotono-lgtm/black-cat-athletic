@@ -63,6 +63,9 @@ export class CatView {
   private swipeTime = -1;
   /** 見た目の傾き（当たり判定の傾きへなめらかに追いつく） */
   private visualPitch = 0;
+  /** 丸くなる姿勢の効き具合（0〜1） */
+  private restBlend = 0;
+  private resting = false;
   private readonly materials: THREE.MeshLambertMaterial[] = [];
   private readonly shadowRoot = new THREE.Group();
   private readonly shadowMat: THREE.MeshBasicMaterial;
@@ -185,6 +188,11 @@ export class CatView {
     this.swipeTime = 0;
   }
 
+  /** 丸くなって休む姿勢にする（ゴール） */
+  setResting(resting: boolean): void {
+    this.resting = resting;
+  }
+
   /** 歩き・空中の姿勢と尻尾の揺れ */
   private animate(dt: number, speed: number, grounded: boolean): void {
     this.time += dt;
@@ -214,12 +222,22 @@ export class CatView {
       }
     }
 
-    // 胴は1周期に2回、わずかに上下する
-    this.body.position.y = Math.sin(this.phase * Math.PI * 4) * WALK.bob * this.walkBlend;
+    // 丸くなる：脚を体の下へたたみ、胴を下げ、尻尾を体に巻きつける
+    this.restBlend += ((this.resting ? 1 : 0) - this.restBlend) * (1 - Math.exp(-4 * dt));
+    if (this.restBlend > 0.001) {
+      for (const leg of this.legs) {
+        const folded = leg.front ? 1.45 : -1.45;
+        leg.pivot.rotation.x = THREE.MathUtils.lerp(leg.pivot.rotation.x, folded, this.restBlend);
+      }
+    }
+
+    // 胴は1周期に2回、わずかに上下する（丸くなると下がる）
+    this.body.position.y = Math.sin(this.phase * Math.PI * 4) * WALK.bob * this.walkBlend - 0.08 * this.restBlend;
 
     // 尻尾：止まっている時はゆっくり左右に、歩くと少し大きく速く揺れる
     const sway = Math.sin(this.time * (1.6 + this.walkBlend * 2.4)) * (0.12 + this.walkBlend * 0.12);
-    this.tailPivot.rotation.y = sway;
+    this.tailPivot.rotation.y = THREE.MathUtils.lerp(sway, 2.3, this.restBlend);
+    this.tailPivot.rotation.x = THREE.MathUtils.lerp(THREE.MathUtils.degToRad(50), -0.3, this.restBlend);
   }
 
   private box(mat: THREE.Material, w: number, h: number, d: number, x: number, y: number, z: number): void {

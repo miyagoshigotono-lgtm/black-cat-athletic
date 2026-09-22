@@ -2,7 +2,7 @@ import RAPIER from '@dimforge/rapier3d-compat';
 import * as THREE from 'three';
 import type { Interactable, ClawHit } from './Interactable';
 import type { CatController } from '../player/CatController';
-import type { DoorDef } from '../greybox/protoInteractables';
+import type { DoorDef } from '../stages/stageTypes';
 
 /** 開閉の速さ [rad/s] */
 const SWING_SPEED = 2.2;

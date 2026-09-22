@@ -12,6 +12,13 @@ const CLAW_REACH = 0.15;
 const RAY_SIDE_OFFSETS = [0, -0.05, 0.05];
 /** 爪の判定の高さ（体の中心からの上乗せ、胸のあたり）[m] */
 const RAY_HEIGHT = 0.03;
+/**
+ * 前方の光線が何にも当たらなかったときに使う、斜め下の光線（床に置いた皿など低い物用）。
+ * 角度 20°・長さ 0.45 なら、胸の高さ（地面から 0.17）からは床に届かない（床は前方 0.47 で当たる）ので、
+ * 何もない所で爪を出しても床に爪痕は付かない。
+ */
+const DOWN_RAY_ANGLE = (20 * Math.PI) / 180;
+const DOWN_RAY_LENGTH = 0.45;
 
 /**
  * 爪ボタンの処理（SPEC 6）。
@@ -56,7 +63,8 @@ export class InteractionSystem {
       }
     }
 
-    if (input.consumeClaw() && !this.active) this.claw();
+    // 休んでいる（ゴール後）間は爪を出さない
+    if (input.consumeClaw() && !this.active && !this.cat.isResting) this.claw();
 
     for (const item of this.items) item.fixedUpdate?.(dt);
   }
@@ -110,7 +118,32 @@ export class InteractionSystem {
         bestOrigin = origin;
       }
     }
-    if (!best) return null;
+    if (!best) {
+      // 前方に何もなければ、斜め下（床の上の低い物）を探す
+      const origin = { x: center.x, y: center.y + RAY_HEIGHT, z: center.z };
+      const down = {
+        x: dir.x * Math.cos(DOWN_RAY_ANGLE),
+        y: -Math.sin(DOWN_RAY_ANGLE),
+        z: dir.z * Math.cos(DOWN_RAY_ANGLE),
+      };
+      this.ray.origin = origin;
+      this.ray.dir = down;
+      const hit = this.world.castRayAndGetNormal(
+        this.ray,
+        DOWN_RAY_LENGTH,
+        true,
+        RAPIER.QueryFilterFlags.EXCLUDE_SENSORS,
+        undefined,
+        this.cat.collider,
+      );
+      if (!hit) return null;
+      const t = hit.timeOfImpact;
+      return {
+        collider: hit.collider,
+        point: new THREE.Vector3(origin.x + down.x * t, origin.y + down.y * t, origin.z + down.z * t),
+        normal: new THREE.Vector3(hit.normal.x, hit.normal.y, hit.normal.z).normalize(),
+      };
+    }
     return {
       collider: best.collider,
       point: new THREE.Vector3(

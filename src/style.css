@@ -172,3 +172,42 @@ body {
   right: env(safe-area-inset-right) !important;
   z-index: 30 !important;
 }
+
+/* ---------- クリア表示 ---------- */
+.clear-overlay {
+  position: fixed;
+  inset: 0;
+  display: none;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  background: rgba(16, 16, 20, 0.35);
+  z-index: 40;
+}
+
+.clear-overlay.visible {
+  display: flex;
+}
+
+.clear-title {
+  font-size: 44px;
+  font-weight: bold;
+  letter-spacing: 0.2em;
+  text-shadow: 0 2px 8px rgba(0, 0, 0, 0.5);
+}
+
+.clear-sub {
+  font-size: 16px;
+  opacity: 0.9;
+}
+
+.clear-retry {
+  margin-top: 12px;
+  padding: 10px 28px;
+  font-size: 16px;
+  color: #101014;
+  background: #f2c14e;
+  border: none;
+  border-radius: 999px;
+}

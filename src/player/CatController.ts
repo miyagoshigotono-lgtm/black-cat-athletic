@@ -32,8 +32,8 @@ export class CatController {
   facing = 0;
   /** 体の傾き（0 = 水平の四つ足、π/2 = 頭が上の登り姿勢） */
   pitch = 0;
-  /** 状態 */
-  mode: 'normal' | 'climbing' = 'normal';
+  /** 状態（resting：ゴールで丸くなって休んでいる。入力を受け付けない） */
+  mode: 'normal' | 'climbing' | 'resting' = 'normal';
 
   /** 補間用：前回と今回の物理ステップ後の中心位置 */
   private readonly prevCenter = new THREE.Vector3();
@@ -114,6 +114,12 @@ export class CatController {
     }
     if (this.mode === 'climbing') {
       this.climbUpdate(dt, input);
+      return;
+    }
+    if (this.mode === 'resting') {
+      this.prevCenter.copy(this.currCenter);
+      this.movedSpeed = 0;
+      input.consumeJump();
       return;
     }
     const p = catParams;
@@ -301,6 +307,19 @@ export class CatController {
     return this.mode === 'climbing';
   }
 
+  get isResting(): boolean {
+    return this.mode === 'resting';
+  }
+
+  /** ゴール：指定の位置・向きで丸くなって休む（以後は動かない） */
+  rest(center: THREE.Vector3, facing: number): void {
+    this.climbSurface = null;
+    this.setPose(center, facing, 0);
+    this.mode = 'resting';
+    this.velocity.set(0, 0, 0);
+    this.grounded = true;
+  }
+
   /** 歩きアニメーション用の速さ [m/s] */
   get animSpeed(): number {
     return this.movedSpeed;
@@ -424,6 +443,14 @@ export class CatController {
       ? floorY! + CAT_SHAPE.height / 2 + CAT_SHAPE.offset
       : s.topY + CAT_SHAPE.height / 2 + CAT_SHAPE.offset + 0.02;
     const center = new THREE.Vector3(x, y, z);
+    // 通り道：面の真上（縁のすぐ上）を四つ足の体が通れること（縁の上に屋根や別の壁があれば乗り越えない）
+    const planeOff = CLIMB_WALL_GAP + CAT_SHAPE.height / 2 + s.thickness / 2;
+    const passage = new THREE.Vector3(
+      this.currCenter.x - n.x * planeOff,
+      s.topY + CAT_SHAPE.height / 2 + CAT_SHAPE.offset + 0.02,
+      this.currCenter.z - n.z * planeOff,
+    );
+    if (!this.poseFree(passage, this.facing, 0)) return false;
     if (!this.poseFree(center, this.facing, 0)) return false;
 
     this.setPose(center, this.facing, 0);

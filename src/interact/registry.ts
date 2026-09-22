@@ -1,9 +1,19 @@
 import type * as THREE from 'three';
 import type { Physics } from '../core/Physics';
 import type { Interactable } from './Interactable';
-import type { InteractableDef } from '../greybox/protoInteractables';
+import type { InteractableDef } from '../stages/stageTypes';
 import { Climbable } from './Climbable';
 import { Door } from './Door';
+import { Goal } from './Goal';
+import { Dish } from './Dish';
+
+/** 対象を作るときに渡す、ステージ側の道具と通知先 */
+export interface InteractableContext {
+  physics: Physics;
+  scene: THREE.Scene;
+  /** ゴールに爪を当てたとき */
+  onGoal: () => void;
+}
 
 /**
  * 配置データの種類（kind）→ 生成処理 の対応表。
@@ -11,16 +21,17 @@ import { Door } from './Door';
  */
 type Factory<K extends InteractableDef['kind']> = (
   def: Extract<InteractableDef, { kind: K }>,
-  physics: Physics,
-  scene: THREE.Scene,
+  ctx: InteractableContext,
 ) => Interactable;
 
 const factories: { [K in InteractableDef['kind']]: Factory<K> } = {
-  climbable: (def, physics, scene) => new Climbable(def, physics, scene),
-  door: (def, physics, scene) => new Door(def, physics.world, scene),
+  climbable: (def, ctx) => new Climbable(def, ctx.physics, ctx.scene),
+  door: (def, ctx) => new Door(def, ctx.physics.world, ctx.scene),
+  goal: (def, ctx) => new Goal(def, ctx.physics, ctx.scene, ctx.onGoal),
+  dish: (def, ctx) => new Dish(def, ctx.physics, ctx.scene),
 };
 
-export function createInteractable(def: InteractableDef, physics: Physics, scene: THREE.Scene): Interactable {
+export function createInteractable(def: InteractableDef, ctx: InteractableContext): Interactable {
   const factory = factories[def.kind] as Factory<typeof def.kind>;
-  return factory(def as never, physics, scene);
+  return factory(def as never, ctx);
 }
