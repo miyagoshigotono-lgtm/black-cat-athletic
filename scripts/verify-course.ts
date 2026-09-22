@@ -45,6 +45,12 @@ const fmt = (v: number) => Number(v.toFixed(4)).toString();
 
 const catTurnDiameter = Math.hypot(CAT_WIDTH, CAT_LENGTH);
 
+/** 重なってよい組（埋め込み） */
+function allowedOverlap(stage: StageDef, a: string, b: string): boolean {
+  return stage.interactables.some((d) => d.kind === 'climbable' && d.embeddedIn
+    && ((d.name === a && d.embeddedIn === b) || (d.name === b && d.embeddedIn === a)));
+}
+
 /** 箱として検算する物すべて（配置の箱＋登れる面＋段ボール＋ご飯皿） */
 function allBoxes(stage: StageDef): BoxDef[] {
   const list: BoxDef[] = [...stage.boxes];
@@ -111,7 +117,7 @@ function verifyStage(stage: StageDef, extra: (ctx: Ctx) => void): boolean {
       const ox = overlap(a.minX, a.maxX, c.minX, c.maxX);
       const oy = overlap(a.minY, a.maxY, c.minY, c.maxY);
       const oz = overlap(a.minZ, a.maxZ, c.minZ, c.maxZ);
-      if (ox > EPS && oy > EPS && oz > EPS) {
+      if (ox > EPS && oy > EPS && oz > EPS && !allowedOverlap(stage, boxes[i].name, boxes[j].name)) {
         errors.push(`${boxes[i].name} と ${boxes[j].name} がめり込んでいる（${fmt(ox)} × ${fmt(oy)} × ${fmt(oz)}）`);
       }
     }
@@ -136,6 +142,19 @@ function verifyStage(stage: StageDef, extra: (ctx: Ctx) => void): boolean {
       && overlap(a.minZ, a.maxZ, s.z - r, s.z + r) > EPS) {
       errors.push(`開始地点の猫が ${b.name} と重なっている`);
     }
+  }
+
+  // 埋め込んだ登れる面：埋め込み先の中に収まり、どれか1面が埋め込み先の表面とそろう（はみ出し・段差なし）
+  for (const d of stage.interactables) {
+    if (d.kind !== 'climbable' || !d.embeddedIn) continue;
+    const a = byName(d.name);
+    const h = byName(d.embeddedIn);
+    const inside = a.minX >= h.minX - EPS && a.maxX <= h.maxX + EPS && a.minY >= h.minY - EPS
+      && a.maxY <= h.maxY + EPS && a.minZ >= h.minZ - EPS && a.maxZ <= h.maxZ + EPS;
+    const flush = [a.minX - h.minX, a.maxX - h.maxX, a.minZ - h.minZ, a.maxZ - h.maxZ].some((v) => Math.abs(v) < EPS);
+    if (!inside) errors.push(`${d.name}：${d.embeddedIn} からはみ出している（歩くと段差に引っかかる）`);
+    else if (!flush) errors.push(`${d.name}：${d.embeddedIn} の表面とそろっていない（爪が届かない）`);
+    else infos.push(`${d.name}：${d.embeddedIn} に埋め込み、表面がそろっている（段差なし）`);
   }
 
   extra({ stage, boxes, byName, errors, infos });
@@ -248,7 +267,7 @@ function forestChecks({ stage, byName, errors, infos, boxes }: Ctx): void {
 
   // 1. スタートからツタが見える距離
   if (vine && vine.kind === 'climbable') {
-    const face = vine.z + vine.d / 2;
+    const face = vine.z + vine.d / 2; // ツタの表面（+Z 側）
     const nose = stage.start.z - CAT_LENGTH / 2;
     infos.push(`スタート → ツタ：鼻先から ${fmt(nose - face)} m（正面、x ${fmt(vine.x - vine.w / 2)}〜${fmt(vine.x + vine.w / 2)}）`);
     if (Math.abs(vine.top - t1.maxY) > EPS) errors.push('ツタの上端が①の木の股の高さと一致しない（登り切って股に乗れない）');

@@ -19,6 +19,11 @@ const RAY_HEIGHT = 0.03;
  */
 const DOWN_RAY_ANGLE = (20 * Math.PI) / 180;
 const DOWN_RAY_LENGTH = 0.45;
+/**
+ * 対象（インタラクタブル）を優先する距離の差 [m]。
+ * 幹に埋め込んだツタのように、対象と普通の物の表面が同じ位置にあるとき、対象の方を選ぶ。
+ */
+const PREFER_INTERACTABLE = 0.01;
 
 /**
  * 爪ボタンの処理（SPEC 6）。
@@ -115,6 +120,21 @@ export class InteractionSystem {
       );
       if (hit && (!best || hit.timeOfImpact < best.timeOfImpact)) {
         best = hit;
+        bestOrigin = origin;
+      }
+      // 表面が重なっている場合に備え、対象だけに当たる光線も飛ばし、ほぼ同じ距離なら対象を選ぶ
+      const target = this.world.castRayAndGetNormal(
+        this.ray,
+        maxDist,
+        true,
+        RAPIER.QueryFilterFlags.EXCLUDE_SENSORS,
+        undefined,
+        this.cat.collider,
+        undefined,
+        (c) => this.byCollider.has(c.handle),
+      );
+      if (target && best && target.timeOfImpact <= best.timeOfImpact + PREFER_INTERACTABLE && !this.byCollider.has(best.collider.handle)) {
+        best = target;
         bestOrigin = origin;
       }
     }
