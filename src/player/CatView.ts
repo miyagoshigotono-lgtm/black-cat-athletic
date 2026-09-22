@@ -9,9 +9,49 @@ import { CAT_SHAPE } from './CatParams';
  * 寸法の基準：root の原点 = 当たり判定の箱の中心。猫は -Z を向く。
  * 当たり判定の範囲は X ±0.07 / Y ±0.13 / Z ±0.22。
  * 胴・脚・頭はこの範囲に収める。耳（上に 0.035）と尻尾（後ろに 0.04）だけ少しはみ出す。
+ *
+ * 歩きのアニメーションは手続き的に付ける（本番モデルでは作り直す前提）。
+ * - 脚は付け根（胴の底 y = -0.01）を軸に前後へ振る。振っても足先は当たり判定の範囲内
+ *   （足先の角は歩きで z ±0.208、空中姿勢で最大 z 0.212。範囲は ±0.22）。
+ * - 足運びは猫の常歩（左後 → 左前 → 右後 → 右前 を 1/4 周期ずつずらす）。
+ * - 空中では前脚を前へ、後脚を後ろへ伸ばす。
  */
+
+/** 脚1本分の情報 */
+interface Leg {
+  pivot: THREE.Group;
+  /** 歩行周期内の位相のずれ（0〜1） */
+  phaseOffset: number;
+  /** 前脚か */
+  front: boolean;
+}
+
+/** アニメーションの調整値 */
+const WALK = {
+  /** 1周期で進む距離 [m]（速度 ÷ これ = 1秒あたりの周期数） */
+  strideLength: 0.6,
+  /** 脚の最大振り角 [rad] */
+  swingAngle: 0.55,
+  /** この速度で振り幅が最大になる [m/s] */
+  fullSwingSpeed: 1.5,
+  /** 空中姿勢の前脚・後脚の角度 [rad]（正で前へ） */
+  airFront: 0.5,
+  airHind: -0.6,
+  /** 胴の上下動 [m] */
+  bob: 0.004,
+};
 export class CatView {
   readonly root = new THREE.Group();
+  /** 胴・頭・尻尾（上下に揺らす部分） */
+  private readonly body = new THREE.Group();
+  private readonly legs: Leg[] = [];
+  private readonly tailPivot = new THREE.Group();
+  /** 歩行周期の位相（0〜1 を繰り返す） */
+  private phase = 0;
+  /** 歩き・空中の姿勢の効き具合（0〜1、なめらかに変える） */
+  private walkBlend = 0;
+  private airBlend = 0;
+  private time = 0;
   private readonly materials: THREE.MeshLambertMaterial[] = [];
   private readonly shadowRoot = new THREE.Group();
   private readonly shadowMat: THREE.MeshBasicMaterial;
@@ -22,11 +62,25 @@ export class CatView {
     const eye = this.mat(0xf2c14e);
     const nose = this.mat(0x3a2a2e);
 
-    // 脚：0.035 角 × 高さ 0.12。y -0.13〜-0.01（足裏が箱の底）
-    for (const x of [-0.04, 0.04]) {
-      for (const z of [-0.13, 0.13]) {
-        this.box(fur, 0.035, 0.12, 0.035, x, -0.07, z);
-      }
+    this.root.add(this.body);
+
+    // 脚：0.035 角 × 高さ 0.12。付け根 y -0.01 から下へ、足裏が箱の底（y -0.13）
+    // 猫は -Z を向くので、猫の左は -X 側
+    const legGeo = new THREE.BoxGeometry(0.035, 0.12, 0.035);
+    const legDefs = [
+      { x: -0.04, z: 0.13, front: false, phaseOffset: 0 }, // 左後
+      { x: -0.04, z: -0.13, front: true, phaseOffset: 0.25 }, // 左前
+      { x: 0.04, z: 0.13, front: false, phaseOffset: 0.5 }, // 右後
+      { x: 0.04, z: -0.13, front: true, phaseOffset: 0.75 }, // 右前
+    ];
+    for (const d of legDefs) {
+      const pivot = new THREE.Group();
+      pivot.position.set(d.x, -0.01, d.z);
+      const leg = new THREE.Mesh(legGeo, fur);
+      leg.position.y = -0.06;
+      pivot.add(leg);
+      this.root.add(pivot);
+      this.legs.push({ pivot, phaseOffset: d.phaseOffset, front: d.front });
     }
     // 胴：幅 0.12 × 高さ 0.11 × 長さ 0.30。y -0.01〜0.10、z -0.12〜0.18
     this.box(fur, 0.12, 0.11, 0.3, 0, 0.045, 0.03);
@@ -44,16 +98,16 @@ export class CatView {
       const ear = new THREE.Mesh(earGeo, fur);
       ear.position.set(x, 0.145, -0.15);
       ear.rotation.y = Math.PI / 4;
-      this.root.add(ear);
+      this.body.add(ear);
     }
     // 尻尾：胴の後ろ上（y 0.09, z 0.18）から後ろ上へ 50° の角度で長さ 0.12
-    const tailPivot = new THREE.Group();
-    tailPivot.position.set(0, 0.09, 0.18);
-    tailPivot.rotation.x = THREE.MathUtils.degToRad(50);
+    this.tailPivot.position.set(0, 0.09, 0.18);
+    this.tailPivot.rotation.order = 'YXZ';
+    this.tailPivot.rotation.x = THREE.MathUtils.degToRad(50);
     const tail = new THREE.Mesh(new THREE.BoxGeometry(0.022, 0.022, 0.12), fur);
     tail.position.z = 0.06;
-    tailPivot.add(tail);
-    this.root.add(tailPivot);
+    this.tailPivot.add(tail);
+    this.body.add(this.tailPivot);
 
     scene.add(this.root);
 
@@ -71,10 +125,22 @@ export class CatView {
    * @param center 補間済みの当たり判定の中心
    * @param facing 猫の向き（Y軸回り）
    * @param opacity カメラが近いときの不透明度（0 で非表示）
+   * @param speed 水平方向の速さ [m/s]（歩きアニメーション用）
+   * @param grounded 接地しているか
    */
-  update(world: RAPIER.World, catCollider: RAPIER.Collider, center: THREE.Vector3, facing: number, opacity: number): void {
+  update(
+    dt: number,
+    world: RAPIER.World,
+    catCollider: RAPIER.Collider,
+    center: THREE.Vector3,
+    facing: number,
+    opacity: number,
+    speed: number,
+    grounded: boolean,
+  ): void {
     this.root.position.copy(center);
     this.root.rotation.y = facing;
+    this.animate(dt, speed, grounded);
 
     this.root.visible = opacity > 0.01;
     for (const m of this.materials) {
@@ -100,10 +166,35 @@ export class CatView {
     }
   }
 
+  /** 歩き・空中の姿勢と尻尾の揺れ */
+  private animate(dt: number, speed: number, grounded: boolean): void {
+    this.time += dt;
+    // 位相は進んだ距離に比例させる（速さが変わっても足が滑って見えにくい）
+    if (grounded) this.phase = (this.phase + (speed / WALK.strideLength) * dt) % 1;
+
+    const k = 1 - Math.exp(-12 * dt);
+    const walkTarget = grounded ? Math.min(1, speed / WALK.fullSwingSpeed) : 0;
+    this.walkBlend += (walkTarget - this.walkBlend) * k;
+    this.airBlend += ((grounded ? 0 : 1) - this.airBlend) * k;
+
+    for (const leg of this.legs) {
+      const walk = Math.sin((this.phase + leg.phaseOffset) * Math.PI * 2) * WALK.swingAngle * this.walkBlend;
+      const air = leg.front ? WALK.airFront : WALK.airHind;
+      leg.pivot.rotation.x = THREE.MathUtils.lerp(walk, air, this.airBlend);
+    }
+
+    // 胴は1周期に2回、わずかに上下する
+    this.body.position.y = Math.sin(this.phase * Math.PI * 4) * WALK.bob * this.walkBlend;
+
+    // 尻尾：止まっている時はゆっくり左右に、歩くと少し大きく速く揺れる
+    const sway = Math.sin(this.time * (1.6 + this.walkBlend * 2.4)) * (0.12 + this.walkBlend * 0.12);
+    this.tailPivot.rotation.y = sway;
+  }
+
   private box(mat: THREE.Material, w: number, h: number, d: number, x: number, y: number, z: number): void {
     const m = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), mat);
     m.position.set(x, y, z);
-    this.root.add(m);
+    this.body.add(m);
   }
 
   private mat(color: number): THREE.MeshLambertMaterial {

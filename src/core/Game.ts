@@ -133,11 +133,20 @@ export class Game {
     const alpha = this.accumulator / FIXED_DT;
     this.cat.getInterpolatedCenter(alpha, this.catCenter);
     this.rig.update(dt, this.input, this.catCenter);
-    this.catView.update(this.physics.world, this.cat.collider, this.catCenter, this.cat.facing, this.rig.play.catOpacity);
+    const v = this.cat.velocity;
+    this.catView.update(
+      dt,
+      this.physics.world,
+      this.cat.collider,
+      this.catCenter,
+      this.cat.facing,
+      this.rig.play.catOpacity,
+      Math.hypot(v.x, v.z),
+      this.cat.grounded,
+    );
 
     this.renderer.render(this.scene, this.rig.camera);
 
-    const v = this.cat.velocity;
     this.hud.setExtra(
       `足元 (${foot.x.toFixed(2)}, ${foot.y.toFixed(2)}, ${foot.z.toFixed(2)}) ${this.cat.grounded ? '接地' : '空中'}\n` +
       `水平速度 ${Math.hypot(v.x, v.z).toFixed(2)} m/s / カメラ距離 ${this.rig.play.currentDistance.toFixed(2)} m`,
