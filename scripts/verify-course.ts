@@ -270,6 +270,157 @@ function checkSolids(stage: StageDef, boxes: BoxDef[], errors: string[], infos: 
   infos.push(`自然物 ${solids.length} 個：浮き・はみ出し・塀などへのめり込みなし、枝の傾きは ${MAX_WALK_SLOPE}° 以下`);
 }
 
+// ---------------------------------------------------------------
+// 到達できる足場の調べ（どこからどこへ跳べるかをたどる）
+// ---------------------------------------------------------------
+
+/** 立てる面（上面）と、その上の代表点 */
+interface Surface {
+  name: string;
+  points: Vec3[];
+}
+
+/** 猫が跳んで進める水平距離（rise が負なら、跳ばずに歩いて落ちる場合も考える） */
+function reachFor(rise: number): number {
+  const jump = jumpReach(rise);
+  if (rise >= 0) return jump;
+  // 跳ばずに端から落ちる：高さの差 |rise| を落ちる間に進む距離
+  const fall = MOVE_SPEED * Math.sqrt((2 * -rise) / GRAVITY);
+  return Math.max(jump, fall);
+}
+
+/** 円周上の点（中心＋半径 r の輪） */
+function ringPoints(x: number, y: number, z: number, r: number, n = 8): Vec3[] {
+  const pts: Vec3[] = [[x, y, z]];
+  for (let i = 0; i < n; i++) {
+    const a = (i / n) * Math.PI * 2;
+    pts.push([x + Math.cos(a) * r, y, z + Math.sin(a) * r]);
+  }
+  return pts;
+}
+
+/** ステージの「立てる面」を集める。地面は塀で手前と奥に分ける */
+function collectSurfaces(stage: StageDef, fence: Aabb): Surface[] {
+  const out: Surface[] = [];
+  const near: Vec3[] = [];
+  const far: Vec3[] = [];
+  const ground = stage.boxes.find((b) => b.isGround)!;
+  const g = aabb(ground);
+  for (let x = g.minX + 0.5; x < g.maxX; x += 1) {
+    for (let z = g.minZ + 0.5; z < g.maxZ; z += 1) {
+      (z > fence.maxZ ? near : far).push([x, 0, z]);
+    }
+  }
+  out.push({ name: '地面（手前）', points: near });
+  out.push({ name: '地面（奥）', points: far });
+
+  for (const b of stage.boxes) {
+    if (b.isGround) continue;
+    // 上面が高すぎる壁（茂み・工場）は足場にしない。塀の上は足場になる
+    if (b.top > 3.5) continue;
+    const pts: Vec3[] = [];
+    for (let x = b.x - b.w / 2 + 0.05; x <= b.x + b.w / 2; x += Math.min(0.5, Math.max(0.05, b.w / 4))) {
+      for (let z = b.z - b.d / 2 + 0.05; z <= b.z + b.d / 2; z += Math.min(0.5, Math.max(0.05, b.d / 4))) {
+        pts.push([x, b.top, z]);
+      }
+    }
+    if (pts.length > 0) out.push({ name: b.name, points: pts });
+  }
+
+  for (const s of stage.solids ?? []) {
+    if (s.kind === 'cylinder') {
+      out.push({ name: s.name, points: ringPoints(s.x, s.top, s.z, s.r * 0.6) });
+    } else if (s.kind === 'clump') {
+      out.push({ name: s.name, points: ringPoints(s.x, s.y + s.ry, s.z, clumpTopRadius(s) * 0.8) });
+    } else {
+      // 枝・倒木：上面の中心線を刻む
+      const pts: Vec3[] = [];
+      const steps = Math.max(2, Math.ceil(Math.hypot(s.p2[0] - s.p1[0], s.p2[1] - s.p1[1], s.p2[2] - s.p1[2]) / 0.3));
+      for (let i = 0; i <= steps; i++) {
+        const t = i / steps;
+        pts.push([
+          s.p1[0] + (s.p2[0] - s.p1[0]) * t,
+          s.p1[1] + (s.p2[1] - s.p1[1]) * t,
+          s.p1[2] + (s.p2[2] - s.p1[2]) * t,
+        ]);
+      }
+      out.push({ name: s.name, points: pts });
+    }
+  }
+  return out;
+}
+
+/** a から b へ移れるか（歩いて渡る／跳ぶ／落ちる）。塀などに遮られる線は通さない */
+function canMove(stage: StageDef, a: Surface, b: Surface): { ok: boolean; gap: number; rise: number } {
+  let best = { ok: false, gap: Infinity, rise: 0 };
+  for (const pa of a.points) {
+    for (const pb of b.points) {
+      const gap = Math.hypot(pb[0] - pa[0], pb[2] - pa[2]);
+      const rise = pb[1] - pa[1];
+      if (rise > JUMP_HEIGHT - 0.15) continue;
+      const walkable = gap < 0.12 && Math.abs(rise) < 0.13;
+      if (!walkable && gap > reachFor(rise) - 0.25) continue;
+      if (blocked(stage, pa, pb)) continue;
+      if (gap < best.gap) best = { ok: true, gap, rise };
+    }
+  }
+  return best;
+}
+
+/** 2点を結ぶ線が、両端より高い箱（塀など）を横切るか */
+function blocked(stage: StageDef, a: Vec3, b: Vec3): boolean {
+  const top = Math.max(a[1], b[1]) + 0.05;
+  const length = Math.hypot(b[0] - a[0], b[2] - a[2]);
+  // 薄い塀を飛ばさないよう、3cm ごとに調べる
+  const dt = Math.min(0.5, 0.03 / Math.max(length, 0.03));
+  for (const box of stage.boxes) {
+    if (box.isGround || box.top <= top) continue;
+    const bb = aabb(box);
+    for (let t = 0; t <= 1.0001; t += dt) {
+      const x = a[0] + (b[0] - a[0]) * t;
+      const z = a[2] + (b[2] - a[2]) * t;
+      // 端ちょうどを通る線も遮られたとみなす（塀の端と茂みの境目をすり抜けないように）
+      if (x >= bb.minX - 0.01 && x <= bb.maxX + 0.01 && z >= bb.minZ - 0.01 && z <= bb.maxZ + 0.01) return true;
+    }
+  }
+  return false;
+}
+
+/**
+ * 地面（手前）から順にたどり、何回の移動で各足場へ行けるかを調べる。
+ * extraEdges：ツタのように、跳ぶ以外の方法でつながる所（[登り口, 登り切り先]）。
+ */
+function reachability(stage: StageDef, fence: Aabb, extraEdges: Array<[string, string]>): Map<string, number> {
+  const surfaces = collectSurfaces(stage, fence);
+  const index = new Map(surfaces.map((s, i) => [s.name, i]));
+  const edges: number[][] = surfaces.map(() => []);
+  for (let i = 0; i < surfaces.length; i++) {
+    for (let j = 0; j < surfaces.length; j++) {
+      if (i === j) continue;
+      if (canMove(stage, surfaces[i], surfaces[j]).ok) edges[i].push(j);
+    }
+  }
+  for (const [from, to] of extraEdges) {
+    const i = index.get(from);
+    const j = index.get(to);
+    if (i !== undefined && j !== undefined) edges[i].push(j);
+  }
+  const dist = new Map<string, number>();
+  const startIndex = index.get('地面（手前）')!;
+  const queue = [startIndex];
+  dist.set('地面（手前）', 0);
+  while (queue.length > 0) {
+    const i = queue.shift()!;
+    const d = dist.get(surfaces[i].name)!;
+    for (const j of edges[i]) {
+      if (dist.has(surfaces[j].name)) continue;
+      dist.set(surfaces[j].name, d + 1);
+      queue.push(j);
+    }
+  }
+  return dist;
+}
+
 interface Ctx {
   stage: StageDef;
   boxes: BoxDef[];
@@ -357,15 +508,6 @@ function jumpReach(rise: number): number {
   return MOVE_SPEED * t;
 }
 
-/** 丸い塊の、高さ y での横の半径（上の輪・中の輪・下の輪の間を直線でつなぐ） */
-function clumpRadiusAt(c: ClumpDef, y: number): number {
-  const top = c.r * (c.topRatio ?? 0.6);
-  const bottom = c.r * (c.bottomRatio ?? 0.5);
-  if (y >= c.y + c.ry) return top;
-  if (y <= c.y - c.ry) return bottom;
-  if (y >= c.y) return c.r + (top - c.r) * ((y - c.y) / c.ry);
-  return c.r + (bottom - c.r) * ((c.y - y) / c.ry);
-}
 
 function forestChecks({ stage, byName, errors, infos }: Ctx): void {
   const solids = stage.solids ?? [];
@@ -375,114 +517,67 @@ function forestChecks({ stage, byName, errors, infos }: Ctx): void {
     return s as Extract<SolidDef, { kind: K }>;
   };
   const fence = byName('板塀');
-  /** 跳ぶ：水平の隙間 gap、高さの差 rise（上がる向きが正）。届けば true */
-  const jump = (label: string, gap: number, rise: number): void => {
-    const reach = jumpReach(rise);
-    const ok = rise < JUMP_HEIGHT - 0.1 && reach > gap + 0.25;
-    infos.push(`${label}：隙間 ${fmt(gap)}、段差 ${rise >= 0 ? '+' : ''}${fmt(rise)} → 空中で進める距離 ${fmt(reach)} ${ok ? '✓' : '✗'}`);
-    if (!ok) errors.push(`${label}：届かない`);
-  };
-  const horiz = (a: [number, number], b: [number, number]) => Math.hypot(a[0] - b[0], a[1] - b[1]);
 
-  // ---------------- ルート A：ツタ → ① → ② → ③ → 塀の上の葉 ----------------
-  const t1 = get('①の木・幹', 'cylinder');
-  const t2 = get('②の木・幹', 'cylinder');
-  const t3 = get('③の木・幹', 'cylinder');
+  // --- ツタ（最初の爪の対象）---
   const vine = stage.interactables.find((d) => d.kind === 'climbable');
+  const t1 = get('①の木・幹', 'cylinder');
   if (vine && vine.kind === 'climbable') {
     const nose = stage.start.z - CAT_LENGTH / 2;
     const face = vine.z + vine.d / 2;
-    infos.push(`A：スタート → ツタ：鼻先から ${fmt(nose - face)} m（正面）`);
+    infos.push(`ツタ：スタートの鼻先から ${fmt(nose - face)} m（正面）、上端 ${vine.top} = ①の股`);
     if (Math.abs(vine.top - t1.top) > EPS) errors.push('ツタの上端が①の股と一致しない');
+    if (!(nose - face > 1.0 && nose - face < 3.0)) errors.push('ツタがスタートから遠すぎる／近すぎる');
   }
-  const b1 = get('①の枝', 'beam');
-  if (Math.abs(b1.p1[1] - t1.top) > EPS) errors.push('①の枝の根元が①の股とそろっていない（段差）');
-  jump('A：①の枝先 → ②の股', horiz([b1.p2[0], b1.p2[2]], [t2.x, t2.z]) - t2.r, t2.top - b1.p2[1]);
-  const b23 = get('②→③の枝', 'beam');
-  if (Math.abs(b23.p1[1] - t2.top) > EPS || Math.abs(b23.p2[1] - t3.top) > EPS) errors.push('②→③の枝の両端が股とそろっていない（段差）');
-  const bOver = get('③の張り出し枝', 'beam');
-  if (Math.abs(bOver.p1[1] - t3.top) > EPS) errors.push('張り出し枝の根元が③の股とそろっていない');
+
+  // --- 塀の上の葉 ---
   const leaf = get('塀の上の葉', 'clump');
   const leafTop = leaf.y + leaf.ry;
   const leafFlat = clumpTopRadius(leaf);
-  // 張り出し枝の上を歩くと葉の横腹に当たって止まる。止まった所（猫の頭の高さでの葉の半径）から平らな上面の縁まで跳ぶ
-  const stopRadius = clumpRadiusAt(leaf, bOver.p2[1] + CAT_HEIGHT);
-  jump('A：張り出し枝 → 塀の上の葉', stopRadius - leafFlat, leafTop - bOver.p2[1]);
-  infos.push(`A：塀の上の葉：上面 ${fmt(leafTop)}、平らな所の半径 ${fmt(leafFlat)}（塀の線まで ${fmt(Math.abs(leaf.z - (fence.minZ + fence.maxZ) / 2))}）、下端 ${fmt(leaf.y - leaf.ry)}（塀 ${fmt(fence.maxY)}）、側面の傾き ${fmt(clumpSideSlopeDeg(leaf))}°`);
+  infos.push(`塀の上の葉：上面 ${fmt(leafTop)}、平らな所の半径 ${fmt(leafFlat)}、下端 ${fmt(leaf.y - leaf.ry)}（塀 ${fmt(fence.maxY)}）、側面の傾き ${fmt(clumpSideSlopeDeg(leaf))}°`);
   if (!(leaf.y - leaf.ry > fence.maxY)) errors.push('塀の上の葉が塀に当たる');
   if (!(Math.abs(leaf.z - (fence.minZ + fence.maxZ) / 2) < leafFlat - 0.2)) errors.push('塀の上の葉の平らな所が塀をまたいでいない');
 
-  // ---------------- ルート B：倒木 → ④の横枝 → 塀を跳び越える ----------------
-  const log = get('倒木', 'beam');
-  const t4 = get('④の木・幹', 'cylinder');
-  const side = get('④の横枝', 'beam');
-  infos.push(`B：倒木：下の端の上面 ${fmt(log.p1[1])}（地面から跳び乗る）、傾き ${fmt(beamFrame(log).slopeDeg)}°、上の端 ${fmt(log.p2[1])}`);
-  if (!(log.p1[1] < JUMP_HEIGHT - 0.3)) errors.push('倒木の下の端が高すぎる');
-  // 横枝の、幹から出た所（幹の中心から半径 + 猫の半幅）
-  const sf = beamFrame(side);
-  const exitDist = t4.r + CAT_WIDTH / 2;
-  const tExit = (() => {
-    // 横枝の中心線上で、幹の中心から水平距離 exitDist になる点を探す
-    for (let t = 0; t <= 1; t += 0.01) {
-      const x = side.p1[0] + (side.p2[0] - side.p1[0]) * t;
-      const z = side.p1[2] + (side.p2[2] - side.p1[2]) * t;
-      if (Math.hypot(x - t4.x, z - t4.z) >= exitDist) return t;
-    }
-    return 1;
-  })();
-  const exit: Vec3 = [
-    side.p1[0] + (side.p2[0] - side.p1[0]) * tExit,
-    side.p1[1] + (side.p2[1] - side.p1[1]) * tExit,
-    side.p1[2] + (side.p2[2] - side.p1[2]) * tExit,
-  ];
-  // 倒木の上の端に立った猫は幹に当たって止まる（中心は幹から 半径 + 半長）。そこから横枝の出口へ
-  const logDir = [log.p2[0] - log.p1[0], log.p2[2] - log.p1[2]];
-  const logDirLen = Math.hypot(logDir[0], logDir[1]);
-  const catAtLogTop: [number, number] = [log.p2[0] - (logDir[0] / logDirLen) * CAT_LENGTH / 2, log.p2[2] - (logDir[1] / logDirLen) * CAT_LENGTH / 2];
-  jump('B：倒木の上 → ④の横枝', Math.max(0, horiz(catAtLogTop, [exit[0], exit[2]]) - CAT_LENGTH / 2), exit[1] - log.p2[1]);
-  void sf;
-  // 横枝の先から塀を跳び越える：塀の向こう面を越えるときの猫の底の高さ
-  const tipToFar = Math.abs(side.p2[2] - fence.minZ);
-  const tipToNear = Math.abs(side.p2[2] - fence.maxZ);
+  // --- ⑤の枝の先から塀を跳び越えられるか（歩いて落ちると塀に当たる＝跳ぶ必要がある）---
+  const b5 = get('⑤の枝', 'beam');
   const v = Math.sqrt(2 * GRAVITY * JUMP_HEIGHT);
-  const tFar = tipToFar / MOVE_SPEED;
-  const yJump = side.p2[1] + v * tFar - 0.5 * GRAVITY * tFar * tFar;
-  const tNear = tipToNear / MOVE_SPEED;
-  const yWalk = side.p2[1] - 0.5 * GRAVITY * tNear * tNear;
-  infos.push(`B：横枝の先 → 塀：跳ぶと塀の向こう面で底の高さ ${fmt(yJump)}（塀 ${fmt(fence.maxY)}）、跳ばずに落ちると塀の手前で ${fmt(yWalk)}（跳ぶ必要がある）`);
-  if (!(yJump > fence.maxY + 0.1)) errors.push('B：横枝の先から塀を跳び越えられない');
+  const tFar = Math.abs(b5.p2[2] - fence.minZ) / MOVE_SPEED;
+  const yJump = b5.p2[1] + v * tFar - 0.5 * GRAVITY * tFar * tFar;
+  const tNear = Math.abs(b5.p2[2] - fence.maxZ) / MOVE_SPEED;
+  const yWalk = b5.p2[1] - 0.5 * GRAVITY * tNear * tNear;
+  infos.push(`⑤の枝の先 → 塀：跳ぶと向こう面で底 ${fmt(yJump)}（塀 ${fmt(fence.maxY)}）、跳ばずに落ちると手前で ${fmt(yWalk)}`);
+  if (!(yJump > fence.maxY + 0.1)) errors.push('⑤の枝の先から塀を跳び越えられない');
 
-  // ---------------- ルート C：岩 → 塀の上 ----------------
-  const rocks = ['岩①', '岩②', '岩③'].map((n) => get(n, 'clump'));
-  infos.push(`C：地面 → 岩①：上面 ${fmt(rocks[0].y + rocks[0].ry)}`);
-  if (!(rocks[0].y + rocks[0].ry < JUMP_HEIGHT - 0.2)) errors.push('岩①が高すぎる');
-  for (let i = 0; i + 1 < rocks.length; i++) {
-    const a = rocks[i], b = rocks[i + 1];
-    jump(`C：${a.name} → ${b.name}`, horiz([a.x, a.z], [b.x, b.z]) - clumpTopRadius(a) - clumpTopRadius(b), b.y + b.ry - (a.y + a.ry));
-  }
-  const r3 = rocks[2];
-  jump('C：岩③ → 塀の上', Math.abs(r3.z - fence.maxZ) - clumpTopRadius(r3), fence.maxY - (r3.y + r3.ry));
-
-  // ---------------- 近道が無いか ----------------
-  // 地面から跳んで届く高さ 1.0 より、木の股・枝・葉はすべて高い（ツタ・倒木・岩を使わないと上がれない）
-  const lowest = Math.min(t1.top, t2.top, t3.top, side.p1[1], leaf.y - leaf.ry);
-  infos.push(`地面から跳んで届く高さ ${JUMP_HEIGHT} < 木の股・枝・葉の最低 ${fmt(lowest)}`);
-  if (!(lowest > JUMP_HEIGHT + 0.2)) errors.push('地面から直接、木の上へ跳び乗れてしまう');
-  // 岩③（上面 1.7）から届くのは塀だけ（木の足場は遠い）
-  const r3Reach: [number, number] = [r3.x, r3.z];
-  const nearest = Math.min(...[t1, t2, t3, t4].map((t) => horiz(r3Reach, [t.x, t.z]) - t.r));
-  infos.push(`C：岩③から一番近い木まで ${fmt(nearest)} m（届かない）`);
-  if (!(nearest > 2.0)) errors.push('岩③から木の足場へ跳び移れてしまう');
-
-  // ---------------- 樹冠に頭が当たらない ----------------
+  // --- 樹冠の上には乗れない（乗れると近道になる）---
   const canopies = solids.filter((o): o is ClumpDef => o.kind === 'clump' && o.name.includes('樹冠'));
-  const canopyBottom = Math.min(...canopies.map((c) => c.y - c.ry));
-  const highestPerch = Math.max(t1.top, t2.top, t3.top, side.p2[1], bOver.p2[1]);
-  const headMax = highestPerch + JUMP_HEIGHT + CAT_HEIGHT;
-  infos.push(`樹冠の下端 ${fmt(canopyBottom)}、木の上から跳んだ頭の最高点 ${fmt(headMax)}`);
-  if (!(canopyBottom > headMax)) errors.push('木の上で跳ぶと樹冠に頭が当たる');
+  const canopyTop = Math.min(...canopies.map((c) => c.y + c.ry));
+  const perches: number[] = [leafTop, ...solids.filter((o): o is BeamDef => o.kind === 'beam').map((o) => Math.max(o.p1[1], o.p2[1]))];
+  const highest = Math.max(...perches);
+  infos.push(`樹冠の上面 ${fmt(canopyTop)}、いちばん高い足場 ${fmt(highest)}（跳んで上がれるのは +${JUMP_HEIGHT - 0.15}）`);
+  if (!(canopyTop > highest + JUMP_HEIGHT - 0.15)) errors.push('足場から樹冠の上に跳び乗れてしまう');
 
-  // ---------------- ゴール ----------------
+  // --- どこからどこへ行けるか（地面から順にたどる）---
+  const withVine = reachability(stage, fence, [['地面（手前）', '①の木・幹']]);
+  const withoutVine = reachability(stage, fence, []);
+  const key = ['①の木・幹', '②の木・幹', '③の木・幹', '塀の上の葉', '岩E', '④の枝', '⑤の枝', '岩D', '板塀', '地面（奥）'];
+  infos.push('到達できるまでの移動回数（ツタあり）：' + key.map((k) => `${k} ${withVine.get(k) ?? '×'}`).join('、'));
+  const cross = withVine.get('地面（奥）');
+  if (cross === undefined) errors.push('塀の向こうへ行けない（ルートが成立していない）');
+  else {
+    infos.push(`塀の向こうまで最短 ${cross} 回の移動（歩き・跳び・登りの合計）`);
+    if (cross < 4) errors.push(`塀の向こうへ ${cross} 回で行けてしまう（簡単すぎる。4回以上にする）`);
+  }
+  // ルートA はツタが要る（ツタ無しでは③の木・塀の上の葉へ行けない）
+  if (withoutVine.has('塀の上の葉')) errors.push('ツタを使わずに塀の上の葉へ行けてしまう');
+  // ルートB・C はツタ無しでも成立する
+  if (!withoutVine.has('⑤の枝')) errors.push('ルートB（倒木）が成立していない');
+  if (!withoutVine.has('岩D')) errors.push('ルートC（岩）が成立していない');
+  if (!withoutVine.has('地面（奥）')) errors.push('ツタを使わないルートで塀を越えられない');
+  const onCanopy = [...withVine.keys()].filter((n) => n.includes('樹冠'));
+  if (onCanopy.length > 0) errors.push(`樹冠の上に乗れてしまう：${onCanopy.join('・')}`);
+  const reachedCount = withVine.size;
+  infos.push(`立てる場所のうち ${reachedCount} か所へ到達できる（行き止まりを含む）`);
+
+  // --- ゴール ---
   const goal = stage.interactables.find((d) => d.kind === 'goal');
   if (goal && goal.kind === 'goal') {
     const iw = goal.w - 2 * goal.wall;
@@ -492,7 +587,7 @@ function forestChecks({ stage, byName, errors, infos }: Ctx): void {
     if (!(goal.z < fence.minZ)) errors.push('段ボールが塀の向こう側にない');
   }
   void beamCorners;
-  void ({} as CylinderDef | BeamDef);
+  void ({} as CylinderDef);
 }
 
 const ok = [verifyStage(PROTO_STAGE, protoChecks), verifyStage(FOREST_STAGE, forestChecks)].every(Boolean);

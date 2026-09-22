@@ -133,50 +133,53 @@ export function runRouteTests(game: Game): string {
   const s = g.stage.start;
   const results: string[] = [];
 
-  // ---------------- ルート A ----------------
+  // ---------------- ルート A：ツタ → ① → ② → ③ → 塀の上の葉 ----------------
   {
-    const b = new Bot(g);
-    b.start(s.x, s.y, s.z, s.facing);
-    b.goto(0, 3.15, 0.05, 4); b.note('ツタの前（幹に当たって止まる）');
-    const climbed = b.climb(); b.note(`ツタを登る(${climbed ? '登り切り' : '失敗'})`);
-    b.goto(-0.42, 1.48, 0.08); b.note('①の枝先');
-    b.jumpToward(-1.2, 0.0); b.note('②の股へ跳ぶ');
-    b.goto(-1.0, -0.25); b.goto(-0.6, -1.7); b.goto(-0.2, -3.0); b.note('②→③の枝を渡る');
-    b.goto(0.1, -3.7); b.note('③の股');
-    b.goto(0.4, -5.2, 0.05, 3); b.note('張り出し枝（葉に当たって止まる）');
-    b.jumpToward(0.6, -6.0); b.note('塀の上の葉へ跳ぶ');
-    b.goto(0.6, -8.0, 0.1, 4); b.wait(1.0); b.note('葉の向こうへ降りる');
-    const ok = beyondFence(b);
-    // ゴールまで行ってクリアできるか
-    b.goto(0, -10.05, 0.05, 6); b.claw(); b.note('段ボールに爪');
+    const bot = new Bot(g);
+    bot.start(s.x, s.y, s.z, s.facing);
+    bot.goto(0.2, 3.4, 0.06, 4); bot.note('ツタの前（幹に当たって止まる）');
+    const climbed = bot.climb(); bot.note(`ツタを登る(${climbed ? '登り切り' : '失敗'})`);
+    bot.goto(-0.55, 1.72, 0.08); bot.note('①の枝（西）の先');
+    bot.jumpToward(-1.9, 0.6); bot.note('②の股へ跳ぶ');
+    bot.goto(-2.33, -1.1, 0.08); bot.note('②の枝（北）の先');
+    bot.jumpToward(-3.0, -2.6); bot.note('③の木へ跳ぶ');
+    bot.goto(-2.25, -4.8, 0.06, 4); bot.note('細い枝（葉に当たって止まる）');
+    bot.jumpToward(-1.9, -5.9); bot.note('塀の上の葉へ跳ぶ');
+    bot.goto(-1.9, -7.6, 0.12, 4); bot.wait(1.0); bot.note('葉の向こうへ降りる');
+    const ok = beyondFence(bot);
+    bot.goto(0, -10.4, 0.05, 8); bot.claw(); bot.note('段ボールに爪');
     const cleared = g.cat.isResting;
-    results.push(`ルートA（ツタ）：${ok ? '✓ 塀を越えた' : '✗ 越えられない'}${cleared ? '・クリア' : ''}\n  ${b.log.join('\n  ')}`);
+    results.push(`ルートA（ツタ）：${ok ? '✓ 塀を越えた' : '✗ 越えられない'}${cleared ? '・クリア' : ''}\n  ${bot.log.join('\n  ')}`);
   }
 
-  // ---------------- ルート B ----------------
+  // ---------------- ルート B：倒木 → 岩E → ④の枝 → ⑤の枝 ----------------
   {
-    const b = new Bot(g);
-    b.start(s.x, s.y, s.z, s.facing);
-    b.goto(3.5, 1.8); b.note('倒木の下の端');
-    b.jumpToward(3.1, 0.85); b.note('倒木に跳び乗る');
-    b.goto(2.45, -0.6, 0.08, 4); b.note('倒木を登る（幹に当たって止まる）');
-    b.jumpToward(2.45, -1.9); b.note('④の横枝へ跳ぶ');
-    b.goto(2.85, -4.95, 0.1); b.note('横枝の先');
-    b.jumpToward(3.0, -7.2); b.wait(0.8); b.note('塀を跳び越える');
-    results.push(`ルートB（倒木）：${beyondFence(b) ? '✓ 塀を越えた' : '✗ 越えられない'}\n  ${b.log.join('\n  ')}`);
+    const bot = new Bot(g);
+    bot.start(s.x, s.y, s.z, s.facing);
+    bot.goto(4.66, 2.83, 0.15, 6); bot.note('倒木の下の端');
+    bot.jumpToward(4.2, 1.9); bot.note('倒木に跳び乗る');
+    bot.goto(3.1, 0.35, 0.15, 5); bot.note('倒木を登って岩Eの上へ');
+    bot.jumpToward(2.9, -0.9); bot.note('④の枝へ跳ぶ');
+    bot.goto(3.55, -1.8, 0.08); bot.note('④の枝の先');
+    bot.jumpToward(3.97, -3.03); bot.note('⑤の枝へ跳ぶ');
+    // 細い枝は中心線に沿って歩く（直線で追うと踏み外す）
+    bot.goto(3.85, -3.6, 0.08); bot.goto(3.6, -4.4, 0.08); bot.goto(3.45, -5.05, 0.08); bot.note('⑤の枝の先');
+    bot.jumpToward(3.3, -7.2); bot.wait(0.8); bot.note('塀を跳び越える');
+    results.push(`ルートB（倒木）：${beyondFence(bot) ? '✓ 塀を越えた' : '✗ 越えられない'}\n  ${bot.log.join('\n  ')}`);
   }
 
-  // ---------------- ルート C ----------------
+  // ---------------- ルート C：岩 → 塀の上 ----------------
   {
-    const b = new Bot(g);
-    b.start(s.x, s.y, s.z, s.facing);
-    b.goto(-3.3, -1.2); b.note('岩①の手前');
-    b.jumpToward(-3.6, -2.0); b.note('岩①へ');
-    b.goto(-3.71, -2.22, 0.06); b.jumpToward(-4.3, -3.4); b.note('岩②へ');
-    b.goto(-4.34, -3.6, 0.06); b.jumpToward(-4.6, -4.9); b.note('岩③へ');
-    b.goto(-4.6, -5.05, 0.06); b.jumpToward(-4.6, -6.6); b.note('塀の方へ跳ぶ');
-    b.goto(-4.6, -7.5, 0.1, 3); b.wait(0.8); b.note('塀の向こうへ');
-    results.push(`ルートC（岩）：${beyondFence(b) ? '✓ 塀を越えた' : '✗ 越えられない'}\n  ${b.log.join('\n  ')}`);
+    const bot = new Bot(g);
+    bot.start(s.x, s.y, s.z, s.facing);
+    bot.goto(-3.9, 0.3, 0.15, 6); bot.note('岩Aの手前');
+    bot.jumpToward(-4.2, -0.6); bot.note('岩Aへ');
+    bot.goto(-4.4, -1.0, 0.06); bot.jumpToward(-4.9, -2.0); bot.note('岩Bへ');
+    bot.goto(-4.82, -2.3, 0.06); bot.jumpToward(-4.6, -3.6); bot.note('岩Cへ');
+    bot.goto(-4.75, -3.9, 0.06); bot.jumpToward(-5.2, -4.6); bot.note('岩Dへ');
+    bot.goto(-5.2, -4.85, 0.06); bot.jumpToward(-5.2, -6.5); bot.note('塀の方へ跳ぶ');
+    bot.goto(-5.2, -7.5, 0.15, 4); bot.wait(0.8); bot.note('塀の向こうへ');
+    results.push(`ルートC（岩）：${beyondFence(bot) ? '✓ 塀を越えた' : '✗ 越えられない'}\n  ${bot.log.join('\n  ')}`);
   }
 
   const report = results.join('\n');
