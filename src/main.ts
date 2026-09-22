@@ -16,6 +16,9 @@ async function boot(): Promise<void> {
 
   if (import.meta.env.DEV) {
     (window as unknown as { game: Game }).game = game;
+    // ルートの自動テスト（開発時のみ読み込む。本番ビルドには含まれない）
+    const { runRouteTests } = await import('./dev/routeTests');
+    (window as unknown as { runRouteTests: () => string }).runRouteTests = () => runRouteTests(game);
   }
 }
 

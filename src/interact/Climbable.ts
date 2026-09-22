@@ -2,7 +2,7 @@ import type RAPIER from '@dimforge/rapier3d-compat';
 import * as THREE from 'three';
 import type { Interactable, ClawHit } from './Interactable';
 import type { CatController } from '../player/CatController';
-import type { ClimbableDef } from '../stages/stageTypes';
+import type { ClimbableDef, StageDef } from '../stages/stageTypes';
 import type { Physics } from '../core/Physics';
 
 /**
@@ -20,16 +20,30 @@ export class Climbable implements Interactable {
     private readonly def: ClimbableDef,
     physics: Physics,
     scene: THREE.Scene,
+    stage: StageDef,
   ) {
     this.name = def.name;
     const cy = def.top - def.h / 2;
-    this.colliders = [physics.addStaticBox({ x: def.x, y: cy, z: def.z }, { x: def.w / 2, y: def.h / 2, z: def.d / 2 })];
+    this.colliders = [
+      physics.addStaticBox({ x: def.x, y: cy, z: def.z }, { x: def.w / 2, y: def.h / 2, z: def.d / 2 }, def.sensor ?? false),
+    ];
 
     // 見た目（グレーボックス段階の仮表現）
     const material = def.look === 'vine' ? createVineMaterial(def.w, def.h) : createMeshMaterial(def.w, def.h, def.d);
-    const mesh = new THREE.Mesh(new THREE.BoxGeometry(def.w, def.h, def.d), material);
-    mesh.position.set(def.x, cy, def.z);
-    scene.add(mesh);
+    const host = stage.solids?.find((o) => o.name === def.embeddedIn);
+    if (host && host.kind === 'cylinder') {
+      // 丸い幹：幹より 1cm 外側に、登れる範囲の幅だけ巻き付けた帯
+      const r = host.r + 0.01;
+      const facing = Math.atan2(def.x - host.x, def.z - host.z); // CylinderGeometry の角度は +Z が 0
+      const arc = def.w / r;
+      const band = new THREE.Mesh(new THREE.CylinderGeometry(r, r, def.h, 12, 1, true, facing - arc / 2, arc), material);
+      band.position.set(host.x, cy, host.z);
+      scene.add(band);
+    } else {
+      const mesh = new THREE.Mesh(new THREE.BoxGeometry(def.w, def.h, def.d), material);
+      mesh.position.set(def.x, cy, def.z);
+      scene.add(mesh);
+    }
   }
 
   onClaw(hit: ClawHit, cat: CatController): boolean {

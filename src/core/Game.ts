@@ -89,7 +89,7 @@ export class Game {
     this.scratches = new ScratchMarks(this.scene);
     this.interactions = new InteractionSystem(this.physics.world, this.cat, this.scratches);
     this.clearOverlay = new ClearOverlay(document.body, stage.name, () => location.reload());
-    const ctx = { physics: this.physics, scene: this.scene, onGoal: () => this.onGoal() };
+    const ctx = { physics: this.physics, scene: this.scene, stage, onGoal: () => this.onGoal() };
     for (const def of stage.interactables) {
       this.interactions.add(createInteractable(def, ctx));
     }

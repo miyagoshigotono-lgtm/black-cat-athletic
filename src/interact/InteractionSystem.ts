@@ -122,18 +122,20 @@ export class InteractionSystem {
         best = hit;
         bestOrigin = origin;
       }
-      // 表面が重なっている場合に備え、対象だけに当たる光線も飛ばし、ほぼ同じ距離なら対象を選ぶ
+      // 表面が重なっている場合（埋め込み）や、当たり判定を持たない登れる範囲（センサー）に備え、
+      // 対象だけに当たる光線も飛ばし、ほぼ同じ距離（またはより近く）なら対象を選ぶ
       const target = this.world.castRayAndGetNormal(
         this.ray,
         maxDist,
         true,
-        RAPIER.QueryFilterFlags.EXCLUDE_SENSORS,
+        undefined,
         undefined,
         this.cat.collider,
         undefined,
         (c) => this.byCollider.has(c.handle),
       );
-      if (target && best && target.timeOfImpact <= best.timeOfImpact + PREFER_INTERACTABLE && !this.byCollider.has(best.collider.handle)) {
+      const bestIsTarget = best !== null && this.byCollider.has(best.collider.handle);
+      if (target && (!best || (!bestIsTarget && target.timeOfImpact <= best.timeOfImpact + PREFER_INTERACTABLE))) {
         best = target;
         bestOrigin = origin;
       }

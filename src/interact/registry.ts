@@ -1,7 +1,7 @@
 import type * as THREE from 'three';
 import type { Physics } from '../core/Physics';
 import type { Interactable } from './Interactable';
-import type { InteractableDef } from '../stages/stageTypes';
+import type { InteractableDef, StageDef } from '../stages/stageTypes';
 import { Climbable } from './Climbable';
 import { Door } from './Door';
 import { Goal } from './Goal';
@@ -11,6 +11,7 @@ import { Dish } from './Dish';
 export interface InteractableContext {
   physics: Physics;
   scene: THREE.Scene;
+  stage: StageDef;
   /** ゴールに爪を当てたとき */
   onGoal: () => void;
 }
@@ -25,7 +26,7 @@ type Factory<K extends InteractableDef['kind']> = (
 ) => Interactable;
 
 const factories: { [K in InteractableDef['kind']]: Factory<K> } = {
-  climbable: (def, ctx) => new Climbable(def, ctx.physics, ctx.scene),
+  climbable: (def, ctx) => new Climbable(def, ctx.physics, ctx.scene, ctx.stage),
   door: (def, ctx) => new Door(def, ctx.physics.world, ctx.scene),
   goal: (def, ctx) => new Goal(def, ctx.physics, ctx.scene, ctx.onGoal),
   dish: (def, ctx) => new Dish(def, ctx.physics, ctx.scene),

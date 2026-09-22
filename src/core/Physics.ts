@@ -22,11 +22,16 @@ export class Physics {
    * @param center 中心座標
    * @param half 各軸の半分の長さ
    */
-  addStaticBox(center: { x: number; y: number; z: number }, half: { x: number; y: number; z: number }): RAPIER.Collider {
+  addStaticBox(
+    center: { x: number; y: number; z: number },
+    half: { x: number; y: number; z: number },
+    sensor = false,
+  ): RAPIER.Collider {
     const body = this.world.createRigidBody(
       RAPIER.RigidBodyDesc.fixed().setTranslation(center.x, center.y, center.z),
     );
-    return this.world.createCollider(RAPIER.ColliderDesc.cuboid(half.x, half.y, half.z), body);
+    // sensor：ぶつからず、爪や面の判定の光線にだけ当たる
+    return this.world.createCollider(RAPIER.ColliderDesc.cuboid(half.x, half.y, half.z).setSensor(sensor), body);
   }
 
   /**
