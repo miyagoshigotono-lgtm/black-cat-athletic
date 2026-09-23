@@ -6,13 +6,15 @@ import type { ClimbableDef, StageDef } from '../stages/stageTypes';
 import type { Physics } from '../core/Physics';
 
 /**
- * 登れる面（金網・ツタ）。押している間続く対象（SPEC 6.4）。見た目が違うだけで動作は同じ。
- * 爪を当てると猫が面に張り付き、爪を離すと猫の側で登りを終える。
+ * 登れる面（金網・ツタ）。見た目が違うだけで動作は同じ。
+ * **爪は要らない**：体を押し当てると自動で張り付く（SPEC 6.4）。
+ * 離れ方はジャンプ（後ろへ飛び降り）・下まで降りる・上まで登って乗り越える。
+ * 爪を当てた場合は、他の物と同じように爪痕が付くだけ。
  * 動きそのもの（登り降り・乗り越え）は CatController の「登り状態」が受け持つ。
  */
 export class Climbable implements Interactable {
   readonly kind = 'climbable';
-  readonly mode = 'hold' as const;
+  readonly mode = 'touch' as const;
   readonly name: string;
   readonly colliders: readonly RAPIER.Collider[];
 
@@ -46,7 +48,12 @@ export class Climbable implements Interactable {
     }
   }
 
-  onClaw(hit: ClawHit, cat: CatController): boolean {
+  /** 爪では登らない（爪痕だけ） */
+  onClaw(): boolean {
+    return false;
+  }
+
+  onTouch(hit: ClawHit, cat: CatController): boolean {
     // 横向きの面にだけ張り付く（上面を引っかいても登りにはならない）
     if (Math.abs(hit.normal.y) > 0.5) return false;
     // 面の厚み（法線方向の寸法）
@@ -60,9 +67,6 @@ export class Climbable implements Interactable {
     });
   }
 
-  onRelease(cat: CatController): void {
-    cat.stopClimb();
-  }
 }
 
 /** 格子模様の半透明マテリアル（1マス 5cm） */

@@ -27,6 +27,7 @@ const PREFER_INTERACTABLE = 0.01;
 
 /**
  * 爪ボタンの処理（SPEC 6）。
+ * - 登れる面（ツタ・金網）は、体を押し当てると爪なしで登り始める（SPEC 6.4）。
  * - 爪を押すたびに、必ず「引っかく仕草」をし、何かに当たれば「爪痕」を付ける（対象かどうかに関係なく同じ）。
  * - 当たった物が対象（インタラクタブル）なら、その動作を起こす。
  * - 対象の選び方：猫の鼻先から前方へ光線を3本飛ばし、いちばん近くで当たった物（距離＋猫の向きで決まる）。
@@ -58,20 +59,28 @@ export class InteractionSystem {
 
   /** 物理ステップごと（猫の更新の前）に呼ぶ */
   fixedUpdate(dt: number, input: InputState): void {
-    // 押している間続く動作：爪を離した、または猫の側で終わった（乗り越え・飛び降り等）
-    if (this.active) {
-      if (!this.cat.isClimbing) {
-        this.active = null;
-      } else if (!input.clawHeld) {
-        this.active.onRelease?.(this.cat);
-        this.active = null;
-      }
-    }
+    // 押している間続く動作：猫の側で終わったら解除
+    if (this.active && !this.cat.isClimbing) this.active = null;
 
     // 休んでいる（ゴール後）間は爪を出さない
-    if (input.consumeClaw() && !this.active && !this.cat.isResting) this.claw();
+    if (input.consumeClaw() && !this.cat.isResting) this.claw();
+
+    // 前へ進もうとして登れる面に当たっていれば、爪なしで登り始める
+    if (this.cat.canAutoClimb && Math.hypot(input.moveX, input.moveY) > 0.3) this.tryTouch();
 
     for (const item of this.items) item.fixedUpdate?.(dt);
+  }
+
+  /** 体を押し当てて始まる動作（登れる面）を試す */
+  private tryTouch(): void {
+    const hit = this.probe();
+    if (!hit) return;
+    const item = this.byCollider.get(hit.collider.handle);
+    if (!item?.onTouch) return;
+    if (item.onTouch(hit, this.cat)) {
+      this.active = item;
+      this.lastResult = `${item.name}（登る）`;
+    }
   }
 
   private claw(): void {

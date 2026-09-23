@@ -6,8 +6,8 @@ import type { CatController } from '../player/CatController';
  * 爪の対象（インタラクタブル）の共通の形（SPEC 6.3）。
  *
  * - 押した瞬間に1回で完了する物（ドア等）は mode = 'instant'
- * - 押している間続く物（登る等）は mode = 'hold'。onClaw が true を返すと「押している間」の状態に入り、
- *   爪を離したら onRelease が呼ばれる。
+ * - 体を押し当てると始まる物（登れる面）は mode = 'touch'。onTouch が true を返すとその状態に入る
+ * - 爪を押している間続く物は mode = 'hold'（onClaw が true を返し、離すと onRelease）
  * - ギミックは可逆な状態機械として作る（開けたら閉められる）。
  *
  * 新しい種類を増やすときは、このインターフェースを満たすクラスを1つ作り、registry.ts に登録する。
@@ -17,7 +17,8 @@ export interface Interactable {
   readonly kind: string;
   /** 配置データの名前（デバッグ表示用） */
   readonly name: string;
-  readonly mode: 'instant' | 'hold';
+  /** instant：爪で1回。hold：爪を押している間。touch：体を押し当てると始まる（爪不要） */
+  readonly mode: 'instant' | 'hold' | 'touch';
   /** 爪が当たったと判定する当たり判定 */
   readonly colliders: readonly RAPIER.Collider[];
 
@@ -26,6 +27,12 @@ export interface Interactable {
    * @returns hold の場合、押している間の状態に入れたら true
    */
   onClaw(hit: ClawHit, cat: CatController): boolean;
+
+  /**
+   * 体を押し当てたときに始まる動作（爪を使わない）。登れる面（ツタ・金網）で使う。
+   * 猫が前へ進もうとしてこの対象に当たっているとき、毎ステップ呼ばれる。
+   */
+  onTouch?(hit: ClawHit, cat: CatController): boolean;
 
   /** hold の対象で、爪を離したとき（または猫側の都合で終わったとき） */
   onRelease?(cat: CatController): void;

@@ -93,18 +93,17 @@ class Bot {
     this.wait(0.15);
   }
 
-  /** 目の前の登れる面に爪を押し続けて登り切る */
-  climb(timeout = 6): boolean {
-    this.g.input.pressClaw();
-    this.step();
-    if (!this.g.cat.isClimbing) { this.g.input.releaseClaw(); return false; }
+  /** 目の前の登れる面に体を押し当てて登り切る（爪は使わない） */
+  climb(timeout = 8): boolean {
     let t = 0;
     this.g.input.moveX = 0;
     this.g.input.moveY = 1;
+    // 押し当てて登り始めるのを待つ
+    while (t < 1 && !this.g.cat.isClimbing) { this.step(); t += DT; }
+    if (!this.g.cat.isClimbing) { this.release(); return false; }
     while (t < timeout && this.g.cat.isClimbing) { this.step(); t += DT; }
-    this.g.input.releaseClaw();
     this.release();
-    this.wait(0.2);
+    this.wait(0.4);
     return !this.g.cat.isClimbing;
   }
 
@@ -158,8 +157,9 @@ export function runRouteTests(game: Game): string {
     bot.start(s.x, s.y, s.z, s.facing);
     bot.goto(4.66, 2.83, 0.15, 6); bot.note('倒木の下の端');
     bot.jumpToward(4.2, 1.9); bot.note('倒木に跳び乗る');
-    bot.goto(3.1, 0.35, 0.15, 5); bot.note('倒木を登って岩Eの上へ');
-    bot.jumpToward(2.9, -0.9); bot.note('④の枝へ跳ぶ');
+    // 倒木の中心線に沿って登る（斜めに横切ると脇から落ちる）
+    bot.goto(3.95, 1.6, 0.12); bot.goto(3.4, 0.7, 0.1); bot.goto(3.05, 0.1, 0.12, 4); bot.note('倒木の上の端');
+    bot.jumpToward(2.89, -0.83); bot.note('④の枝へ跳ぶ');
     bot.goto(3.55, -1.8, 0.08); bot.note('④の枝の先');
     bot.jumpToward(3.97, -3.03); bot.note('⑤の枝へ跳ぶ');
     // 細い枝は中心線に沿って歩く（直線で追うと踏み外す）

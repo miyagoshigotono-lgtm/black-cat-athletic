@@ -65,6 +65,10 @@ export class CatController {
   private posePending = false;
   /** 直近の物理ステップで実際に動いた速さ [m/s]（歩きアニメーション用） */
   private movedSpeed = 0;
+  /** 登りから離れた直後に、すぐ登り直さないための待ち時間 [s] */
+  private climbCooldown = 0;
+  /** 登り切った直後の一拍（この間は移動入力を受けない）[s] */
+  private mantlePause = 0;
 
   constructor(
     private readonly world: RAPIER.World,
@@ -116,6 +120,7 @@ export class CatController {
       this.climbUpdate(dt, input);
       return;
     }
+    this.climbCooldown = Math.max(0, this.climbCooldown - dt);
     if (this.mode === 'resting') {
       this.prevCenter.copy(this.currCenter);
       this.movedSpeed = 0;
@@ -133,6 +138,13 @@ export class CatController {
       0,
       -cos * input.moveY - sin * input.moveX,
     );
+    // 登り切った直後は一拍おく（前へ入れっぱなしで、そのまま縁から落ちないように）
+    if (this.mantlePause > 0) {
+      this.mantlePause = Math.max(0, this.mantlePause - dt);
+      dir.set(0, 0, 0);
+      this.velocity.x = 0;
+      this.velocity.z = 0;
+    }
     const inputLen = Math.min(1, dir.length());
     if (inputLen > 1e-4) dir.normalize();
     const targetVx = dir.x * p.moveSpeed * inputLen;
@@ -279,6 +291,17 @@ export class CatController {
     // 3. 着地面を探す（持ち上げた分より下に床が無ければ、段ではないので乗り越えない）
     const downHit = cast(ahead, { x: 0, y: -1, z: 0 }, lift);
     if (!downHit) return null;
+    // 着地面が急な斜面なら乗り越えない（岩の丸い側面などを 12cm ずつ登ってしまうのを防ぐ）
+    const normalRay = new RAPIER.Ray({ x: ahead.x, y: ahead.y, z: ahead.z }, { x: 0, y: -1, z: 0 });
+    const normalHit = this.world.castRayAndGetNormal(
+      normalRay,
+      lift + CAT_SHAPE.height / 2 + 0.1,
+      true,
+      flags,
+      undefined,
+      this.collider,
+    );
+    if (!normalHit || normalHit.normal.y < Math.cos(THREE.MathUtils.degToRad(CAT_SHAPE.maxSlopeClimbDeg))) return null;
     const drop = Math.max(0, downHit.time_of_impact - offset);
     const rise = lift - drop;
     if (rise < 0.005) return null;
@@ -309,6 +332,11 @@ export class CatController {
 
   get isResting(): boolean {
     return this.mode === 'resting';
+  }
+
+  /** 体を押し当てて登り始められる状態か（登り中・休み中・離れた直後は不可） */
+  get canAutoClimb(): boolean {
+    return this.mode === 'normal' && this.climbCooldown <= 0;
   }
 
   /** ゴール：指定の位置・向きで丸くなって休む（以後は動かない） */
@@ -430,15 +458,31 @@ export class CatController {
   private mantle(): boolean {
     const s = this.climbSurface!;
     const n = s.normal;
-    // いまの中心から面までの距離を戻し、さらに面の厚み＋体の半長＋余裕だけ向こう側へ
-    const back = CLIMB_WALL_GAP + CAT_SHAPE.height / 2 + s.thickness + CAT_SHAPE.length / 2 + 0.03;
-    const x = this.currCenter.x - n.x * back;
-    const z = this.currCenter.z - n.z * back;
+    // 登っていた面の上の点（いまの中心から、面までの距離を戻した所）
+    const planeOffset = CLIMB_WALL_GAP + CAT_SHAPE.height / 2;
+    const planeX = this.currCenter.x - n.x * planeOffset;
+    const planeZ = this.currCenter.z - n.z * planeOffset;
 
-    const ray = new RAPIER.Ray({ x, y: s.topY + 0.5, z }, { x: 0, y: -1, z: 0 });
-    const hit = this.world.castRay(ray, 0.6, true, RAPIER.QueryFilterFlags.EXCLUDE_SENSORS, undefined, this.collider);
-    const floorY = hit ? s.topY + 0.5 - hit.timeOfImpact : null;
-    const onLedge = floorY !== null && Math.abs(floorY - s.topY) < 0.06;
+    // まず「縁のすぐ内側」に立てるか（木の股・台など、上に乗れる面がある場合）。
+    // 体の後ろ端が面のあたりに来る位置にする。奥まで進めると、そのまま歩いて落ちてしまう。
+    const ledgeBack = CAT_SHAPE.length / 2 + 0.02;
+    let x = planeX - n.x * ledgeBack;
+    let z = planeZ - n.z * ledgeBack;
+    const floorAt = (px: number, pz: number): number | null => {
+      const ray = new RAPIER.Ray({ x: px, y: s.topY + 0.5, z: pz }, { x: 0, y: -1, z: 0 });
+      const hit = this.world.castRay(ray, 0.6, true, RAPIER.QueryFilterFlags.EXCLUDE_SENSORS, undefined, this.collider);
+      return hit ? s.topY + 0.5 - hit.timeOfImpact : null;
+    };
+    let floorY = floorAt(x, z);
+    let onLedge = floorY !== null && Math.abs(floorY - s.topY) < 0.06;
+    if (!onLedge) {
+      // 上に乗れる面が無い（薄い金網など）：面の厚みぶん向こう側へ出て、落ちる
+      const back = planeOffset + s.thickness + CAT_SHAPE.length / 2 + 0.03;
+      x = this.currCenter.x - n.x * back;
+      z = this.currCenter.z - n.z * back;
+      floorY = floorAt(x, z);
+      onLedge = floorY !== null && Math.abs(floorY - s.topY) < 0.06;
+    }
     const y = onLedge
       ? floorY! + CAT_SHAPE.height / 2 + CAT_SHAPE.offset
       : s.topY + CAT_SHAPE.height / 2 + CAT_SHAPE.offset + 0.02;
@@ -456,6 +500,8 @@ export class CatController {
     this.setPose(center, this.facing, 0);
     this.mode = 'normal';
     this.climbSurface = null;
+    this.climbCooldown = CLIMB_RETRY_DELAY;
+    if (onLedge) this.mantlePause = MANTLE_PAUSE;
     // 薄い金網の場合は、向こう側へ少し押し出しながら落とす
     this.velocity.set(onLedge ? 0 : -n.x * 0.8, 0, onLedge ? 0 : -n.z * 0.8);
     this.timeSinceGrounded = Infinity;
@@ -495,6 +541,7 @@ export class CatController {
 
     this.mode = 'normal';
     this.climbSurface = null;
+    this.climbCooldown = CLIMB_RETRY_DELAY;
     this.timeSinceGrounded = Infinity;
     if (kind === 'jump') {
       const p = catParams;
@@ -593,6 +640,10 @@ const CLIMB_SIDE_RATIO = 0.7;
 const CLIMB_WALL_GAP = 0.015;
 /** 縁の検出に使う「頭の位置」（中心からの高さ）[m] */
 const CLIMB_HEAD_PROBE = 0.18;
+/** 登り切って縁に乗った直後、移動入力を受けない時間 [s] */
+const MANTLE_PAUSE = 0.25;
+/** 登りから離れた後、すぐ登り直さないための待ち時間 [s] */
+const CLIMB_RETRY_DELAY = 0.4;
 /** 後ろへ飛び降りるときの水平速度 [m/s] と跳ね上がる高さ [m] */
 const CLIMB_JUMP_BACK_SPEED = 2.0;
 const CLIMB_JUMP_HEIGHT = 0.3;

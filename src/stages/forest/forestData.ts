@@ -54,13 +54,13 @@ boxes.push(block('板塀', 0, -6.0, 12, 0.1, 2.4, 'boards'));
 solids.push({ kind: 'cylinder', name: '①の木・幹', x: 0.2, z: 2.8, r: 0.42, bottom: 0, top: 2.1, color: 'bark' });
 solids.push({ kind: 'cylinder', name: '①の木・上の幹', x: 0.5, z: 2.6, r: 0.18, bottom: 2.1, top: TRUNK_TOP, color: 'bark', attachedTo: ['①の木・幹'] });
 solids.push({ kind: 'clump', name: '①の木・樹冠', x: 0.4, y: CANOPY_Y, z: 2.6, r: 1.5, ry: 0.55, color: 'leaves', attachedTo: ['①の木・上の幹'] });
-// 股から2本の枝。東の枝は行き止まり
+// 股から2本の枝。西の枝はツタの真上から始まり、登り切ってそのまま進める。東の枝は行き止まり
 solids.push({
   kind: 'beam', name: '①の枝（東・行き止まり）', p1: [0.3, 2.1, 2.6], p2: [1.7, 2.2, 2.3], width: 0.24, thickness: 0.16, color: 'branch',
   attachedTo: ['①の木・幹'],
 });
 solids.push({
-  kind: 'beam', name: '①の枝（西）', p1: [0.1, 2.1, 2.55], p2: [-0.7, 2.35, 1.5], width: 0.22, thickness: 0.16, color: 'branch',
+  kind: 'beam', name: '①の枝（西）', p1: [0.2, 2.1, 2.6], p2: [-0.7, 2.35, 1.5], width: 0.22, thickness: 0.16, color: 'branch',
   attachedTo: ['①の木・幹'],
 });
 
@@ -96,10 +96,11 @@ solids.push({ kind: 'cylinder', name: '④の木・幹', x: 2.6, z: -0.4, r: 0.4
 solids.push({ kind: 'clump', name: '④の木・樹冠', x: 2.6, y: CANOPY_Y, z: -0.4, r: 1.5, ry: 0.5, color: 'leaves', attachedTo: ['④の木・幹'] });
 solids.push({ kind: 'cylinder', name: '⑤の木・幹', x: 4.2, z: -2.6, r: 0.45, bottom: 0, top: TRUNK_TOP, color: 'bark' });
 solids.push({ kind: 'clump', name: '⑤の木・樹冠', x: 4.2, y: CANOPY_Y, z: -2.6, r: 1.5, ry: 0.5, color: 'leaves', attachedTo: ['⑤の木・幹'] });
-rock('岩E', 3.1, 0.35, 0.85, 0.65); // 上面 1.3：倒木の上の端（1.25）より少し高くし、歩いて乗り移れるようにする
+rock('岩E', 2.2, 1.6, 0.8, 0.6); // 上面 1.2（行き止まり：ここから届く足場は無い）
 solids.push({
-  kind: 'beam', name: '倒木', p1: [4.4, 0.35, 2.4], p2: [3.3, 1.25, 0.6], width: 0.38, thickness: 0.35, color: 'bark',
-  attachedTo: ['岩E'],
+  // ④の木の幹に立てかけた倒木（傾き約 21°）。上の端（1.5）から④の枝へ跳ぶ
+  kind: 'beam', name: '倒木', p1: [4.4, 0.35, 2.4], p2: [2.9, 1.5, -0.15], width: 0.38, thickness: 0.35, color: 'bark',
+  attachedTo: ['④の木・幹'],
 });
 solids.push({
   kind: 'beam', name: '④の枝', p1: [2.6, 1.95, -0.4], p2: [3.6, 2.2, -1.9], width: 0.25, thickness: 0.16, color: 'branch',
