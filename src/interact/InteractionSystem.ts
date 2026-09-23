@@ -109,6 +109,30 @@ export class InteractionSystem {
     const right = { x: Math.cos(f), z: -Math.sin(f) };
     const maxDist = CAT_SHAPE.length / 2 + CLAW_REACH;
 
+    // 足元に対象がある（対象の上に乗っている）なら、それを掻く。
+    // 机の上のキーボードのように、上に乗ってから爪を立てる物のため。対象以外の床は拾わない
+    const underRay = new RAPIER.Ray(
+      { x: center.x, y: center.y, z: center.z },
+      { x: 0, y: -1, z: 0 },
+    );
+    const under = this.world.castRayAndGetNormal(
+      underRay,
+      CAT_SHAPE.height / 2 + 0.12,
+      true,
+      undefined,
+      undefined,
+      this.cat.collider,
+      undefined,
+      (c) => this.byCollider.has(c.handle),
+    );
+    if (under) {
+      return {
+        collider: under.collider,
+        point: new THREE.Vector3(center.x, center.y - under.timeOfImpact, center.z),
+        normal: new THREE.Vector3(under.normal.x, under.normal.y, under.normal.z).normalize(),
+      };
+    }
+
     let best: RAPIER.RayColliderIntersection | null = null;
     let bestOrigin = { x: 0, y: 0, z: 0 };
     for (const side of RAY_SIDE_OFFSETS) {
@@ -149,8 +173,10 @@ export class InteractionSystem {
         bestOrigin = origin;
       }
     }
-    if (!best) {
-      // 前方に何もなければ、斜め下（床の上の低い物）を探す
+    const bestIsTargetNow = best !== null && this.byCollider.has(best.collider.handle);
+    if (!best || !bestIsTargetNow) {
+      // 前方に対象が無ければ、斜め下（床や机の上の低い物）を探す。
+      // まず対象だけを探し、見つからなければ何でも拾う（爪痕を出すため）
       const origin = { x: center.x, y: center.y + RAY_HEIGHT, z: center.z };
       const down = {
         x: dir.x * Math.cos(DOWN_RAY_ANGLE),
@@ -159,21 +185,33 @@ export class InteractionSystem {
       };
       this.ray.origin = origin;
       this.ray.dir = down;
-      const hit = this.world.castRayAndGetNormal(
+      const downTarget = this.world.castRayAndGetNormal(
+        this.ray,
+        DOWN_RAY_LENGTH,
+        true,
+        undefined,
+        undefined,
+        this.cat.collider,
+        undefined,
+        (c) => this.byCollider.has(c.handle),
+      );
+      const hit = downTarget ?? (best ? null : this.world.castRayAndGetNormal(
         this.ray,
         DOWN_RAY_LENGTH,
         true,
         RAPIER.QueryFilterFlags.EXCLUDE_SENSORS,
         undefined,
         this.cat.collider,
-      );
-      if (!hit) return null;
-      const t = hit.timeOfImpact;
-      return {
-        collider: hit.collider,
-        point: new THREE.Vector3(origin.x + down.x * t, origin.y + down.y * t, origin.z + down.z * t),
-        normal: new THREE.Vector3(hit.normal.x, hit.normal.y, hit.normal.z).normalize(),
-      };
+      ));
+      if (hit) {
+        const t = hit.timeOfImpact;
+        return {
+          collider: hit.collider,
+          point: new THREE.Vector3(origin.x + down.x * t, origin.y + down.y * t, origin.z + down.z * t),
+          normal: new THREE.Vector3(hit.normal.x, hit.normal.y, hit.normal.z).normalize(),
+        };
+      }
+      if (!best) return null;
     }
     return {
       collider: best.collider,

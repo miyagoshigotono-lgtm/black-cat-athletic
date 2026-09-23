@@ -1,7 +1,8 @@
 import RAPIER from '@dimforge/rapier3d-compat';
 import './style.css';
 import { Game } from './core/Game';
-import { getStageFromUrl } from './stages';
+import { getStageFromUrl, STAGE_ENTRIES } from './stages';
+import { showStageSelect } from './ui/StageSelect';
 
 async function boot(): Promise<void> {
   // Rapier（WASM埋め込み版）は使う前に初期化が必要
@@ -10,9 +11,13 @@ async function boot(): Promise<void> {
   const container = document.getElementById('app');
   if (!container) throw new Error('#app が見つかりません');
 
-  const game = new Game(container, getStageFromUrl());
-  game.start();
+  // URL で指定が無ければステージ選択画面を出す（?stage=forest などなら、そのまま始める）
+  const fromUrl = getStageFromUrl();
   document.getElementById('loading')?.classList.add('hidden');
+  const stage = fromUrl ?? await showStageSelect(document.body, STAGE_ENTRIES);
+
+  const game = new Game(container, stage);
+  game.start();
 
   if (import.meta.env.DEV) {
     (window as unknown as { game: Game }).game = game;

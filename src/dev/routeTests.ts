@@ -128,7 +128,8 @@ function beyondFence(b: Bot): boolean {
 
 export function runRouteTests(game: Game): string {
   const g = game.debug;
-  if (g.stage.id !== 'forest') return '森のステージで実行してください（URL に ?stage= を付けない）';
+  if (g.stage.id === 'factory') return runFactoryTest(game);
+  if (g.stage.id !== 'forest') return '森か工場のステージで実行してください';
   const s = g.stage.start;
   const results: string[] = [];
 
@@ -184,6 +185,60 @@ export function runRouteTests(game: Game): string {
   }
 
   const report = results.join('\n');
+  console.log(report);
+  return report;
+}
+
+/**
+ * 工場ステージの通しテスト（1本道なので1つ）。
+ * 床 → 木箱 → コンベア → 機械B → ダクト → キャットウォーク → 鉄骨 → 天窓 → 屋根
+ * → 屋外ダクト → 室外機 → 事務所の屋根 → 事務所のダクト → 窓台 → 2階 → 机 → キーボード
+ */
+function runFactoryTest(game: Game): string {
+  const g = game.debug;
+  const s = g.stage.start;
+  const bot = new Bot(g);
+  bot.start(s.x, s.y, s.z, s.facing);
+
+  bot.goto(3.6, 16.7, 0.15, 6); bot.note('パレットの上(0.12)');
+  bot.jumpToward(3.6, 15.9); bot.note('木箱A(0.8)');
+  bot.goto(4.05, 15.2, 0.12, 4); bot.jumpToward(4.45, 14.75); bot.note('木箱B(1.55)');
+  bot.goto(4.4, 14.0, 0.12, 4); bot.jumpToward(3.9, 13.6); bot.note('木箱C(2.3)');
+  bot.goto(2.95, 12.9, 0.12, 4); bot.jumpToward(2.3, 12.65); bot.note('コンベアの下端(2.6)');
+  // コンベアの中心線を上る
+  bot.goto(0.6, 12.0, 0.15); bot.goto(-1.5, 11.1, 0.15); bot.goto(-3.6, 10.2, 0.15, 5); bot.note('コンベアの上端(4.3)');
+  bot.goto(-5.0, 9.6, 0.15, 5); bot.note('機械Bの上(4.4)');
+  bot.goto(-7.6, 9.0, 0.15, 5); bot.note('機械Bの西の端');
+  bot.jumpToward(-8.8, 9.0); bot.note('ダクト（横）(5.2)');
+  bot.goto(-11.5, 9.0, 0.15, 5); bot.goto(-12.34, 8.75, 0.15, 4); bot.note('ダクトの西寄り');
+  bot.jumpToward(-12.34, 8.2); bot.note('斜めの通路（下）へ');
+  bot.goto(-12.34, 6.2, 0.15, 5); bot.goto(-12.34, 4.9, 0.15, 4); bot.note('斜めの通路の上端(6.9)');
+  bot.goto(-13.3, 4.6, 0.15, 4); bot.note('キャットウォーク(6.9)');
+  bot.goto(-13.2, 3.6, 0.12, 4); bot.note('斜めの通路（上）の下端');
+  bot.goto(-12.2, 2.3, 0.15, 4); bot.goto(-11.2, 1.2, 0.15, 4); bot.note('鉄骨A(8.6)');
+  bot.goto(-10.0, 1.0, 0.15, 8); bot.note('筋交いの下端');
+  // 筋交いの中心線に沿って上る
+  bot.goto(-9.0, 1.5, 0.12, 4); bot.goto(-8.0, 2.0, 0.12, 4); bot.goto(-6.9, 2.55, 0.12, 4);
+  bot.goto(-6.5, 2.75, 0.12, 4); bot.note('鉄骨B(10.4)');
+  bot.goto(-6.0, 2.9, 0.12, 4); bot.goto(-6.0, 2.0, 0.15, 5); bot.note('天窓へのダクト');
+  bot.goto(-6.0, 0.0, 0.15, 5); bot.goto(-6.0, -1.5, 0.15, 5); bot.note('天窓を抜ける');
+  bot.goto(-6.0, -3.0, 0.2, 5); bot.note('屋根の上(12.3)');
+  bot.goto(-6.0, -6.5, 0.2, 8); bot.note('屋根を北へ');
+  bot.goto(-6.0, -7.9, 0.2, 5); bot.wait(0.6); bot.note('屋外ダクト(9.8)へ降りる');
+  bot.goto(-8.8, -8.6, 0.2, 5); bot.wait(0.6); bot.note('室外機(8.2)へ降りる');
+  bot.jumpToward(-8.8, -11.6); bot.wait(0.8); bot.note('事務所の屋根(7.6)');
+  bot.goto(-12.0, -11.4, 0.2, 6); bot.note('屋根の南西の端');
+  bot.goto(-12.0, -10.2, 0.25, 4); bot.wait(0.8); bot.note('事務所のダクト(5.6)へ降りる');
+  bot.goto(-10.2, -10.5, 0.2, 5); bot.note('ダクトの東の端');
+  bot.jumpToward(-9.3, -10.7); bot.wait(0.6); bot.note('窓台(4.52)');
+  bot.goto(-8.75, -11.9, 0.2, 5); bot.wait(0.6); bot.note('窓から事務所の中へ');
+  bot.goto(-6.0, -17.3, 0.2, 10); bot.note('椅子の手前');
+  bot.jumpToward(-6.0, -17.9); bot.note('椅子の上(4.45)');
+  bot.jumpToward(-6.0, -18.75); bot.note('机の上(4.72)');
+  bot.goto(-6.0, -19.15, 0.08, 4); bot.claw(); bot.note('キーボードに爪');
+  const cleared = g.cat.isResting;
+  const nl = String.fromCharCode(10);
+  const report = `工場：${cleared ? '✓ クリア' : '✗ 届かなかった'}` + nl + '  ' + bot.log.join(nl + '  ');
   console.log(report);
   return report;
 }

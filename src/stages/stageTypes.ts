@@ -22,7 +22,13 @@ export type BoxColor =
   | 'rock'
   | 'boards'
   | 'cardboard'
-  | 'metal';
+  | 'metal'
+  | 'concrete'
+  | 'machine'
+  | 'steel'
+  | 'roof'
+  | 'crate'
+  | 'desk';
 
 export interface BoxDef {
   /** 識別名（検算ログ用） */
@@ -141,20 +147,26 @@ export interface DoorDef {
 }
 
 /**
- * ゴール：上の開いた段ボール箱（中に布、横に傘）。爪を当てるとクリア。
- * 箱は X 方向に長い向きで置く。壁・底の箱は cardboardParts() で求める。
+ * ゴール：爪を当てるとクリアになる物。X 方向に長い向きで置く。
+ * 形（当たり判定の箱）は goalParts() で求める。
+ *  - cardboard：上の開いた段ボール箱（中に布、横に傘）。猫は中で丸くなる（森）
+ *  - keyboard：机の上のキーボード。猫は上で丸くなる（工場の事務所）
  */
 export interface GoalDef {
   kind: 'goal';
   name: string;
-  /** 箱の中心 */
+  /** 見た目と形（既定：段ボール） */
+  look?: 'cardboard' | 'keyboard';
+  /** 中心 */
   x: number;
   z: number;
+  /** 置かれている面の高さ（机の上など。既定 0 ＝ 床） */
+  baseY?: number;
   /** 外寸：X 方向の長さ・Z 方向の奥行き・高さ */
   w: number;
   d: number;
   height: number;
-  /** 段ボールの厚み */
+  /** 段ボールの厚み（keyboard では使わない） */
   wall: number;
 }
 
@@ -188,10 +200,16 @@ export interface StageDef {
 }
 
 /**
- * 段ボール箱（ゴール）を構成する箱：底・左右の壁・前後の壁。
- * 底は壁の内側に収め、壁と重ならないようにする。
+ * ゴールを構成する箱。
+ *  - keyboard：薄い板 1 枚（机の上に載る）
+ *  - cardboard：底・左右の壁・前後の壁。底は壁の内側に収め、壁と重ならないようにする
+ * baseY は置かれている面の高さ（机の上など）。
  */
-export function cardboardParts(g: GoalDef): BoxDef[] {
+export function goalParts(g: GoalDef): BoxDef[] {
+  const base = g.baseY ?? 0;
+  if ((g.look ?? 'cardboard') === 'keyboard') {
+    return [{ name: `${g.name}・本体`, x: g.x, z: g.z, w: g.w, d: g.d, top: base + g.height, h: g.height, color: 'desk' }];
+  }
   const hw = g.w / 2;
   const hd = g.d / 2;
   const t = g.wall;
@@ -199,10 +217,10 @@ export function cardboardParts(g: GoalDef): BoxDef[] {
   const innerD = g.d - 2 * t;
   const color = 'cardboard' as const;
   return [
-    { name: `${g.name}・底`, x: g.x, z: g.z, w: innerW, d: innerD, top: t, h: t, color },
-    { name: `${g.name}・左壁`, x: g.x - hw + t / 2, z: g.z, w: t, d: g.d, top: g.height, h: g.height, color },
-    { name: `${g.name}・右壁`, x: g.x + hw - t / 2, z: g.z, w: t, d: g.d, top: g.height, h: g.height, color },
-    { name: `${g.name}・奥壁`, x: g.x, z: g.z - hd + t / 2, w: innerW, d: t, top: g.height, h: g.height, color },
-    { name: `${g.name}・手前壁`, x: g.x, z: g.z + hd - t / 2, w: innerW, d: t, top: g.height, h: g.height, color },
+    { name: `${g.name}・底`, x: g.x, z: g.z, w: innerW, d: innerD, top: base + t, h: t, color },
+    { name: `${g.name}・左壁`, x: g.x - hw + t / 2, z: g.z, w: t, d: g.d, top: base + g.height, h: g.height, color },
+    { name: `${g.name}・右壁`, x: g.x + hw - t / 2, z: g.z, w: t, d: g.d, top: base + g.height, h: g.height, color },
+    { name: `${g.name}・奥壁`, x: g.x, z: g.z - hd + t / 2, w: innerW, d: t, top: base + g.height, h: g.height, color },
+    { name: `${g.name}・手前壁`, x: g.x, z: g.z + hd - t / 2, w: innerW, d: t, top: base + g.height, h: g.height, color },
   ];
 }

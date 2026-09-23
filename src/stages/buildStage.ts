@@ -23,6 +23,12 @@ const COLORS: Record<BoxColor, number> = {
   boards: 0xa9804f,
   cardboard: 0xc9a26b,
   metal: 0x9aa3ab,
+  concrete: 0xb0aca4,
+  machine: 0x6f7a80,
+  steel: 0x7f8a94,
+  roof: 0x8d9299,
+  crate: 0xb98a55,
+  desk: 0x8a7f72,
 };
 
 /** 丸い塊（葉・岩）は面ごとに陰影を付けて、形が分かりやすいようにする */
