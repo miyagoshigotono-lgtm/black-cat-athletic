@@ -1,12 +1,12 @@
-import { CAT_HEIGHT, CAT_LENGTH, CAT_WIDTH } from '../greybox/protoCourseData';
+import { CAT_HEIGHT, CAT_LENGTH, CAT_WIDTH } from '../greybox/protoCourseData.ts';
 
 /**
- * 猫の調整値（SPEC「未決事項」：プロトタイプで調整）。
- * デバッグパネル（lil-gui）から実行中に変更できる。
+ * 猫の調整値（SPEC「未決事項」：プロトタイプで調整して決めた値）。
+ * コースの検算（scripts/verify-course.ts）もこの値を読むので、変えたら必ず検算し直す。
  */
 export const catParams = {
   /** 移動速度 [m/s] */
-  moveSpeed: 3.0,
+  moveSpeed: 2.0,
   /** ジャンプの高さ（足元が上がる高さ）[m] */
   jumpHeight: 1.0,
   /** 重力加速度 [m/s²]（現実の9.81より強めにしてふわつきを抑える） */

@@ -166,13 +166,6 @@ body {
   font-size: 48px;
 }
 
-/* デバッグパネル（lil-gui）はHUDと重ならない右上に */
-.lil-gui.root {
-  top: env(safe-area-inset-top) !important;
-  right: env(safe-area-inset-right) !important;
-  z-index: 30 !important;
-}
-
 /* ---------- クリア表示 ---------- */
 .clear-overlay {
   position: fixed;

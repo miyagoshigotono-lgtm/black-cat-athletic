@@ -18,6 +18,7 @@
  * 登れる面・ゴールの段ボール・ご飯皿も、動かない箱として 1〜5 に含める（当たり判定の無い登れる範囲は除く）。
  */
 import { CAT_WIDTH, CAT_HEIGHT, CAT_LENGTH } from '../src/greybox/protoCourseData.ts';
+import { catParams } from '../src/player/CatParams.ts';
 import { PROTO_STAGE } from '../src/greybox/protoStage.ts';
 import { FOREST_STAGE } from '../src/stages/forest/forestData.ts';
 import { cardboardParts, type BoxDef, type DoorDef, type StageDef, type SolidDef, type ClumpDef, type BeamDef, type CylinderDef } from '../src/stages/stageTypes.ts';
@@ -27,10 +28,10 @@ import { solidAabb, pointInSolid, beamFrame, beamCorners, beamOverlapsBox, clump
 const MAX_WALK_SLOPE = 30;
 
 const EPS = 1e-6;
-/** 猫の能力（CatParams の初期値と同じ） */
-const JUMP_HEIGHT = 1.0;
-const GRAVITY = 20;
-const MOVE_SPEED = 3.0;
+/** 猫の能力（ゲーム本体と同じ値を CatParams から読む） */
+const JUMP_HEIGHT = catParams.jumpHeight;
+const GRAVITY = catParams.gravity;
+const MOVE_SPEED = catParams.moveSpeed;
 
 interface Aabb {
   minX: number; maxX: number; minY: number; maxY: number; minZ: number; maxZ: number;
@@ -390,7 +391,7 @@ function blocked(stage: StageDef, a: Vec3, b: Vec3): boolean {
  * 地面（手前）から順にたどり、何回の移動で各足場へ行けるかを調べる。
  * extraEdges：ツタのように、跳ぶ以外の方法でつながる所（[登り口, 登り切り先]）。
  */
-function reachability(stage: StageDef, fence: Aabb, extraEdges: Array<[string, string]>): Map<string, number> {
+function reachability(stage: StageDef, fence: Aabb, extraEdges: Array<[string, string]>): Map<string, string[]> {
   const surfaces = collectSurfaces(stage, fence);
   const index = new Map(surfaces.map((s, i) => [s.name, i]));
   const edges: number[][] = surfaces.map(() => []);
@@ -405,20 +406,27 @@ function reachability(stage: StageDef, fence: Aabb, extraEdges: Array<[string, s
     const j = index.get(to);
     if (i !== undefined && j !== undefined) edges[i].push(j);
   }
-  const dist = new Map<string, number>();
+  // 各足場へ「どうたどり着いたか」（開始地点からの並び）を覚えておく
+  const route = new Map<string, string[]>();
   const startIndex = index.get('地面（手前）')!;
   const queue = [startIndex];
-  dist.set('地面（手前）', 0);
+  route.set('地面（手前）', ['地面（手前）']);
   while (queue.length > 0) {
     const i = queue.shift()!;
-    const d = dist.get(surfaces[i].name)!;
+    const here = route.get(surfaces[i].name)!;
     for (const j of edges[i]) {
-      if (dist.has(surfaces[j].name)) continue;
-      dist.set(surfaces[j].name, d + 1);
+      if (route.has(surfaces[j].name)) continue;
+      route.set(surfaces[j].name, [...here, surfaces[j].name]);
       queue.push(j);
     }
   }
-  return dist;
+  return route;
+}
+
+/** 足場までの移動回数（たどり着けなければ undefined） */
+function moves(route: Map<string, string[]>, name: string): number | undefined {
+  const r = route.get(name);
+  return r ? r.length - 1 : undefined;
 }
 
 interface Ctx {
@@ -558,19 +566,20 @@ function forestChecks({ stage, byName, errors, infos }: Ctx): void {
   // --- どこからどこへ行けるか（地面から順にたどる）---
   const withVine = reachability(stage, fence, [['地面（手前）', '①の木・幹']]);
   const withoutVine = reachability(stage, fence, []);
-  const key = ['①の木・幹', '②の木・幹', '③の木・幹', '塀の上の葉', '岩E', '④の枝', '⑤の枝', '岩D', '板塀', '地面（奥）'];
-  infos.push('到達できるまでの移動回数（ツタあり）：' + key.map((k) => `${k} ${withVine.get(k) ?? '×'}`).join('、'));
-  const cross = withVine.get('地面（奥）');
+  const key = ['①の木・幹', '②の木・幹', '③の木・幹', '塀の上の葉', '岩E', '④の枝', '⑤の枝', '塀ぎわの岩', '板塀', '地面（奥）'];
+  infos.push('到達できるまでの移動回数（ツタあり）：' + key.map((k) => `${k} ${moves(withVine, k) ?? '×'}`).join('、'));
+  const cross = moves(withVine, '地面（奥）');
   if (cross === undefined) errors.push('塀の向こうへ行けない（ルートが成立していない）');
   else {
-    infos.push(`塀の向こうまで最短 ${cross} 回の移動（歩き・跳び・登りの合計）`);
+    infos.push(`塀の向こうまで最短 ${cross} 回の移動：${withVine.get('地面（奥）')!.join(' → ')}`);
     if (cross < 4) errors.push(`塀の向こうへ ${cross} 回で行けてしまう（簡単すぎる。4回以上にする）`);
   }
   // ルートA はツタが要る（ツタ無しでは③の木・塀の上の葉へ行けない）
   if (withoutVine.has('塀の上の葉')) errors.push('ツタを使わずに塀の上の葉へ行けてしまう');
+  if (!withVine.has('塀の上の葉')) errors.push('ルートA（ツタ）が成立していない');
   // ルートB・C はツタ無しでも成立する
   if (!withoutVine.has('⑤の枝')) errors.push('ルートB（倒木）が成立していない');
-  if (!withoutVine.has('岩D')) errors.push('ルートC（岩）が成立していない');
+  if (!withoutVine.has('塀ぎわの岩')) errors.push('ルートC（岩）が成立していない');
   if (!withoutVine.has('地面（奥）')) errors.push('ツタを使わないルートで塀を越えられない');
   const onCanopy = [...withVine.keys()].filter((n) => n.includes('樹冠'));
   if (onCanopy.length > 0) errors.push(`樹冠の上に乗れてしまう：${onCanopy.join('・')}`);

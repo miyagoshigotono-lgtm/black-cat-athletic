@@ -210,6 +210,15 @@ export class CatController {
       }
     }
 
+    // 急な斜面には立てない（岩の丸い側面に着地しても、そこからは跳べず滑り落ちる）
+    if (this.grounded) {
+      const support = this.supportNormal(moved);
+      if (support && support.y < COS_MAX_SLOPE) {
+        this.grounded = false;
+        this.slideDownhill(dt, support);
+      }
+    }
+
     // 天井に頭をぶつけたら上昇をやめる
     if (desired.y > 0 && moved.y < desired.y * 0.5) {
       this.velocity.y = 0;
@@ -307,6 +316,55 @@ export class CatController {
     if (rise < 0.005) return null;
 
     return { x: ahead.x - pos.x, y: rise, z: ahead.z - pos.z };
+  }
+
+  /**
+   * 足元を受けている面の向き（法線）を返す。接地していなければ null。
+   * 底面の中央と四隅から真下へ線を飛ばし、いちばん平らな面を採る
+   * （丸い岩の上では、1本だけだと線が横をすり抜けて遠くの地面を拾うことがあるため）。
+   */
+  private supportNormal(moved: RAPIER.Vector): RAPIER.Vector | null {
+    const pos = this.body.translation();
+    const cx = pos.x + moved.x;
+    const cy = pos.y + moved.y;
+    const cz = pos.z + moved.z;
+    const sin = Math.sin(this.facing);
+    const cos = Math.cos(this.facing);
+    const halfW = CAT_SHAPE.width / 2 - CAT_SHAPE.border;
+    const halfL = CAT_SHAPE.length / 2 - CAT_SHAPE.border;
+    // 中心から下へ「体の半分＋接触マージン＋少し」まで。これに届く面が体を受けている面
+    const reach = CAT_SHAPE.height / 2 + CAT_SHAPE.offset + 0.04;
+    const flags = RAPIER.QueryFilterFlags.EXCLUDE_SENSORS;
+    let best: RAPIER.Vector | null = null;
+    for (const [sx, sz] of GROUND_SAMPLES) {
+      const lx = sx * halfW;
+      const lz = sz * halfL;
+      const from = { x: cx + lx * cos + lz * sin, y: cy, z: cz - lx * sin + lz * cos };
+      const hit = this.world.castRayAndGetNormal(
+        new RAPIER.Ray(from, { x: 0, y: -1, z: 0 }),
+        reach,
+        true,
+        flags,
+        undefined,
+        this.collider,
+      );
+      if (!hit) continue;
+      if (!best || hit.normal.y > best.y) best = hit.normal;
+    }
+    return best;
+  }
+
+  /** 急な斜面では、面の下り方向（法線の水平成分）へ押されて滑り落ちる */
+  private slideDownhill(dt: number, normal: RAPIER.Vector): void {
+    const h = Math.hypot(normal.x, normal.z);
+    if (h < 1e-4) return;
+    const dx = normal.x / h;
+    const dz = normal.z / h;
+    const along = this.velocity.x * dx + this.velocity.z * dz;
+    if (along >= SLIDE_MAX_SPEED) return;
+    const add = Math.min(SLIDE_ACCEL * dt, SLIDE_MAX_SPEED - along);
+    this.velocity.x += dx * add;
+    this.velocity.z += dz * add;
   }
 
   /** 中心 center で向き facing にしたとき、周りとぶつからないか */
@@ -629,6 +687,16 @@ export interface ClimbSurface {
   /** 面の厚み（乗り越え先の計算用） */
   thickness: number;
 }
+
+/** 足元の面を調べる位置（体の中心を (0,0) とした、左右・前後の割合） */
+const GROUND_SAMPLES: ReadonlyArray<readonly [number, number]> = [
+  [0, 0], [0, 0.8], [0, -0.8], [0.8, 0.8], [-0.8, 0.8], [0.8, -0.8], [-0.8, -0.8],
+];
+/** これより急な面には立てない（cos で比べる） */
+const COS_MAX_SLOPE = Math.cos(THREE.MathUtils.degToRad(CAT_SHAPE.maxSlopeClimbDeg));
+/** 急な斜面を滑り落ちる加速度 [m/s²] と、滑りで出る水平速度の上限 [m/s] */
+const SLIDE_ACCEL = 10;
+const SLIDE_MAX_SPEED = 3;
 
 /** 登り姿勢の傾き（頭が真上） */
 const CLIMB_PITCH = Math.PI / 2;

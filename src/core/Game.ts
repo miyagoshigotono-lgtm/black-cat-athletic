@@ -1,12 +1,10 @@
 import * as THREE from 'three';
-import GUI from 'lil-gui';
 import { Physics } from './Physics';
 import { CatController } from '../player/CatController';
 import { CatView } from '../player/CatView';
-import { catParams } from '../player/CatParams';
-import { PlayCamera, playCameraParams } from '../camera/PlayCamera';
+import { PlayCamera } from '../camera/PlayCamera';
 import { CameraRig } from '../camera/CameraRig';
-import { InputState, lookParams } from '../input/InputState';
+import { InputState } from '../input/InputState';
 import { KeyboardMouseInput } from '../input/KeyboardMouseInput';
 import { TouchInput } from '../input/TouchInput';
 import { TouchControls } from '../ui/TouchControls';
@@ -26,11 +24,10 @@ const MAX_STEPS_PER_FRAME = 5;
 /** この高さより下に落ちたら開始地点へ戻す（ステージの外に抜けた時の安全策。本番のリスポーンではない） */
 const OUT_OF_WORLD_Y = -5;
 
-/** 描画設定（デバッグパネルから変更可） */
-const renderParams = {
-  /** 解像度倍率の上限（スマホの負荷調整用） */
-  maxPixelRatio: 2,
-};
+/** 解像度倍率の上限（スマホの負荷を抑えるため） */
+const MAX_PIXEL_RATIO = 2;
+/** 性能表示（FPS・座標など）を出すかどうか。URL に ?debug=1 を付けたときだけ */
+const SHOW_DEBUG_HUD = new URLSearchParams(location.search).get('debug') === '1';
 
 /**
  * ゲーム全体のまとめ役。
@@ -46,7 +43,7 @@ export class Game {
   private readonly rig: CameraRig;
   private readonly keyboardMouse: KeyboardMouseInput;
   private readonly touchControls: TouchControls;
-  private readonly hud: DebugHud;
+  private readonly hud: DebugHud | null;
   private readonly lockHint: HTMLDivElement;
   private readonly interactions: InteractionSystem;
   private readonly scratches: ScratchMarks;
@@ -122,9 +119,9 @@ export class Game {
       this.lockHint.classList.toggle('hidden', locked || this.touchControls.visible || this.cleared);
     };
 
-    this.hud = new DebugHud(document.body);
+    // 性能の確認用（?debug=1 のときだけ）。ふだんの画面には何も出さない
+    this.hud = SHOW_DEBUG_HUD ? new DebugHud(document.body) : null;
     new OrientationOverlay(document.body);
-    this.createDebugPanel(isTouchDevice);
 
     window.addEventListener('resize', () => this.onResize());
     window.visualViewport?.addEventListener('resize', () => this.onResize());
@@ -177,12 +174,14 @@ export class Game {
 
     this.renderer.render(this.scene, this.rig.camera);
 
-    this.hud.setExtra(
-      `足元 (${foot.x.toFixed(2)}, ${foot.y.toFixed(2)}, ${foot.z.toFixed(2)}) ${this.cat.isClimbing ? '登り' : this.cat.grounded ? '接地' : '空中'}\n` +
-      `爪：${this.interactions.lastResult}\n` +
-      `速さ ${this.cat.animSpeed.toFixed(2)} m/s / カメラ距離 ${this.rig.play.currentDistance.toFixed(2)} m`,
-    );
-    this.hud.update(dt, this.renderer);
+    if (this.hud) {
+      this.hud.setExtra(
+        `足元 (${foot.x.toFixed(2)}, ${foot.y.toFixed(2)}, ${foot.z.toFixed(2)}) ${this.cat.isClimbing ? '登り' : this.cat.grounded ? '接地' : '空中'}\n` +
+        `爪：${this.interactions.lastResult}\n` +
+        `速さ ${this.cat.animSpeed.toFixed(2)} m/s / カメラ距離 ${this.rig.play.currentDistance.toFixed(2)} m`,
+      );
+      this.hud.update(dt, this.renderer);
+    }
   }
 
   /** ゴールに爪を当てた：猫は丸くなり、少し間をおいてクリア表示 */
@@ -202,7 +201,7 @@ export class Game {
   }
 
   private applyPixelRatio(): void {
-    this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, renderParams.maxPixelRatio));
+    this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, MAX_PIXEL_RATIO));
   }
 
   private onResize(): void {
@@ -211,44 +210,6 @@ export class Game {
     this.renderer.setSize(w, h);
     this.rig.camera.aspect = w / h;
     this.rig.camera.updateProjectionMatrix();
-  }
-
-  /** 調整値のパネル（SPEC 未決事項「移動速度・ジャンプ力・空中操作」をその場で調整するため） */
-  private createDebugPanel(startClosed: boolean): void {
-    // スマホでは画面を隠しすぎないよう細くする
-    const gui = new GUI({ title: '調整（検証用）', width: startClosed ? 210 : 260 });
-    const catFolder = gui.addFolder('猫');
-    catFolder.add(catParams, 'moveSpeed', 0.5, 8, 0.1).name('移動速度 m/s');
-    catFolder.add(catParams, 'jumpHeight', 0.2, 2.5, 0.05).name('ジャンプ高さ m');
-    catFolder.add(catParams, 'gravity', 5, 40, 0.5).name('重力 m/s²');
-    catFolder.add(catParams, 'airControl', 0, 1, 0.05).name('空中操作の効き');
-    catFolder.add(catParams, 'groundAccel', 5, 100, 1).name('地上の加速度');
-    catFolder.add({ reset: () => this.cat.teleport(this.startPosition) }, 'reset').name('開始地点へ戻す（検証用）');
-
-    const camFolder = gui.addFolder('カメラ');
-    camFolder.add(playCameraParams, 'distance', 0.6, 5, 0.1).name('距離 m');
-    camFolder.add(playCameraParams, 'targetHeight', 0, 0.6, 0.01).name('注視点の高さ m');
-    camFolder.add(playCameraParams, 'probeRadius', 0.03, 0.3, 0.01).name('判定球の半径 m');
-    camFolder.add(playCameraParams, 'returnSpeed', 0.5, 15, 0.5).name('戻る速さ');
-    camFolder.add(playCameraParams, 'fadeStart', 0.1, 1.5, 0.01).name('猫が薄くなる距離');
-    camFolder.add(playCameraParams, 'fadeEnd', 0, 1, 0.01).name('猫が消える距離');
-
-    const inputFolder = gui.addFolder('操作');
-    inputFolder.add(lookParams, 'mouseSensitivity', 0.0005, 0.01, 0.0001).name('マウス感度');
-    inputFolder.add(lookParams, 'touchSensitivity', 0.001, 0.02, 0.0005).name('スワイプ感度');
-    inputFolder.add(lookParams, 'invertY').name('上下反転');
-
-    const renderFolder = gui.addFolder('描画');
-    renderFolder.add(renderParams, 'maxPixelRatio', 0.5, 3, 0.25).name('解像度倍率の上限').onChange(() => {
-      this.applyPixelRatio();
-      this.onResize();
-    });
-
-    catFolder.close();
-    camFolder.close();
-    inputFolder.close();
-    renderFolder.close();
-    if (startClosed) gui.close();
   }
 
   /** 開発時の確認用（コンソールから状態を見る） */

@@ -42,8 +42,6 @@ export class TouchInput {
 
   private onDown(e: PointerEvent): void {
     if (e.pointerType !== 'touch') return;
-    // デバッグパネルの操作は視点・移動として扱わない
-    if (e.target instanceof Element && e.target.closest('.lil-gui')) return;
     this.onFirstTouch();
     e.preventDefault();
 
