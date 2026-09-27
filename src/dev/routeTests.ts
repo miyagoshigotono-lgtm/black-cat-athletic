@@ -75,9 +75,30 @@ class Bot {
   }
 
   /** 目標の方へ走りながら跳び、着地するまで目標へスティックを倒し続ける */
-  jumpToward(x: number, z: number, timeout = 3): void {
-    this.steer(x, z);
-    this.step();
+  /**
+   * 目標の方へ跳ぶ。
+   * @param mode run：いまの勢いのまま跳ぶ（遠くへ届く）／stand：勢いを消してその場から跳ぶ（狭い足場用）
+   */
+  jumpToward(x: number, z: number, timeout = 3, mode: 'run' | 'stand' = 'run'): void {
+    if (mode === 'stand') {
+      // 勢いを消してその場から跳ぶ（狭い足場用）
+      this.release();
+      for (let i = 0; i < 10 && this.g.cat.velocity.lengthSq() > 0.04; i++) this.step();
+      this.steer(x, z);
+      this.step();
+    } else {
+      // 少し助走してから跳ぶ（立ち止まったまま跳ぶと届かないため）
+      for (let i = 0; i < 8; i++) {
+        this.steer(x, z);
+        const p = this.pos;
+        const dx = x - p.x;
+        const dz = z - p.z;
+        const d = Math.hypot(dx, dz) || 1;
+        const v = this.g.cat.velocity;
+        if ((v.x * dx + v.z * dz) / d > 1.5) break;
+        this.step();
+      }
+    }
     this.g.input.pressJump();
     let t = 0;
     let airborne = false;
@@ -89,6 +110,9 @@ class Bot {
       else if (airborne) break;
     }
     this.g.input.releaseJump();
+    // 着地した直後も少しだけ目標へ入力を続ける（縁に乗っただけで止まると落ちるため）。
+    // 狭い足場（stand）では踏み外すので、その場に止める
+    if (mode === 'run') { for (let i = 0; i < 6; i++) { this.steer(x, z); this.step(); } }
     this.release();
     // 着地して落ち着くまで待つ（次の跳躍を空中で始めないため）
     let settled = 0;
@@ -101,14 +125,17 @@ class Bot {
     this.wait(0.1);
   }
 
-  /** 目の前の登れる面に体を押し当てて登り切る（爪は使わない） */
-  climb(timeout = 8): boolean {
+  /** 目の前の登れる面に体を押し当てて登り切る（爪は使わない）。向きは (dirX, dirZ) */
+  climb(dirX = 0, dirZ = -1, timeout = 8): boolean {
     let t = 0;
-    this.g.input.moveX = 0;
-    this.g.input.moveY = 1;
+    this.g.input.moveX = dirX;
+    this.g.input.moveY = -dirZ;
     // 押し当てて登り始めるのを待つ
     while (t < 1 && !this.g.cat.isClimbing) { this.step(); t += DT; }
     if (!this.g.cat.isClimbing) { this.release(); return false; }
+    // 張り付いたら、上方向の入力に切り替えて登る（登り中は上下＝登り降り）
+    this.g.input.moveX = 0;
+    this.g.input.moveY = 1;
     while (t < timeout && this.g.cat.isClimbing) { this.step(); t += DT; }
     this.release();
     this.wait(0.4);
@@ -119,6 +146,7 @@ class Bot {
     this.g.input.pressClaw();
     this.step();
     this.g.input.releaseClaw();
+    this.log.push('  爪 → ' + this.g.interactions.lastResult);
     this.wait(0.1);
   }
 
@@ -182,8 +210,8 @@ export function runRouteTests(game: Game): string {
   {
     const bot = new Bot(g);
     bot.start(s.x, s.y, s.z, s.facing);
-    bot.goto(-3.9, 0.3, 0.15, 6); bot.note('岩Aの手前');
-    bot.jumpToward(-4.2, -0.6); bot.note('岩Aへ');
+    bot.goto(-4.05, 0.55, 0.15, 6); bot.note('岩Aの手前');
+    bot.jumpToward(-4.2, -0.15); bot.note('岩Aの上(0.56)');
     bot.goto(-4.36, -0.91, 0.06); bot.jumpToward(-4.8, -1.75); bot.note('岩Bへ');
     bot.goto(-4.74, -1.99, 0.06); bot.jumpToward(-4.5, -2.9); bot.note('岩Cへ');
     bot.goto(-4.61, -3.12, 0.06); bot.jumpToward(-5.05, -4.0); bot.note('岩Dへ');
@@ -222,11 +250,11 @@ function runFactoryTest(game: Game): string {
     bot.goto(1.7, 19.2, 0.2, 5); bot.note('シャッターの下をくぐって中へ');
 
     if (route === 'A') {
-      bot.goto(3.6, 16.7, 0.2, 8); bot.note('パレットの上(0.12)');
-      bot.jumpToward(3.6, 15.9); bot.note('木箱A(0.8)');
-      bot.goto(4.05, 15.2, 0.12, 4); bot.jumpToward(4.45, 14.75); bot.note('木箱B(1.55)');
-      bot.goto(4.4, 14.0, 0.12, 4); bot.jumpToward(3.9, 13.6); bot.note('木箱C(2.3)');
-      bot.goto(2.95, 12.9, 0.12, 4); bot.jumpToward(2.3, 12.65); bot.note('コンベアの下端(2.6)');
+      bot.goto(3.6, 16.8, 0.2, 8); bot.note('パレットの上(0.12)');
+      bot.jumpToward(3.6, 16.0); bot.note('木箱A(0.7)');
+      bot.goto(3.6, 15.4, 0.12, 4); bot.jumpToward(3.6, 14.5); bot.note('木箱B(1.35)');
+      bot.goto(3.5, 13.9, 0.12, 4); bot.jumpToward(3.2, 13.2); bot.note('木箱C(2.0)');
+      bot.goto(2.7, 12.9, 0.12, 4); bot.jumpToward(2.0, 12.7); bot.note('コンベアの下端(2.6)');
       bot.goto(0.6, 12.0, 0.15); bot.goto(-1.5, 11.1, 0.15); bot.goto(-3.6, 10.2, 0.15, 5); bot.note('コンベアの上端(4.5)');
       bot.goto(-5.0, 9.6, 0.15, 5); bot.note('機械Bの上(4.4)');
       bot.goto(-7.6, 9.0, 0.15, 5); bot.note('機械Bの西の端');
@@ -251,7 +279,8 @@ function runFactoryTest(game: Game): string {
     }
 
   bot.goto(-13.2, 3.6, 0.12, 4); bot.note('斜めの通路（上）の下端');
-  bot.goto(-12.2, 2.3, 0.15, 4); bot.goto(-11.2, 1.2, 0.15, 4); bot.note('鉄骨A(8.6)');
+  bot.goto(-12.2, 2.3, 0.15, 4); bot.goto(-11.4, 1.35, 0.12, 4); bot.goto(-11.0, 1.0, 0.08, 4);
+  bot.note('鉄骨A(8.6)');
   bot.goto(-10.4, 1.0, 0.15, 8); bot.note('筋交いの下端');
   bot.goto(-9.8, 1.25, 0.12, 4);
   // 筋交いの中心線に沿って上る
@@ -300,33 +329,31 @@ function runHouseTest(game: Game): string {
 
     // 庭 → 網戸のすき間（x −3.3〜−3.0）をくぐって家の中へ
     bot.goto(-3.15, 8.2, 0.2, 8); bot.note('窓の前');
-    bot.jumpToward(-3.15, 7.3); bot.note('サッシ(0.15)に乗る');
+    bot.jumpToward(-3.15, 7.3, 3, 'stand'); bot.note('サッシ(0.15)に乗る');
     bot.goto(-3.15, 6.6, 0.15, 5); bot.note('すき間をくぐってリビングへ');
 
     if (route === 'A') {
       // リビングの本棚を登って2階の床（南）へ
       bot.goto(-6.7, -4.75, 0.2, 10); bot.note('飾り棚の北がわ');
-      bot.jumpToward(-6.7, -3.95); bot.note('飾り棚の段1(0.6)');
-      bot.jumpToward(-6.7, -3.15); bot.note('飾り棚の段2(1.2)');
-      bot.jumpToward(-6.7, -2.35); bot.note('飾り棚の段3(1.8)');
-      bot.jumpToward(-6.7, -1.55); bot.note('飾り棚の段4(2.4)');
-      bot.goto(-6.7, -1.72, 0.06, 3); bot.jumpToward(-6.7, -0.6); bot.note('2階の床（南）(3.0)');
+      bot.jumpToward(-6.7, -3.95, 3, 'stand'); bot.note('飾り棚の段1(0.6)');
+      bot.jumpToward(-6.7, -3.15, 3, 'stand'); bot.note('飾り棚の段2(1.2)');
+      bot.jumpToward(-6.7, -2.35, 3, 'stand'); bot.note('飾り棚の段3(1.8)');
+      bot.jumpToward(-6.7, -1.55, 3, 'stand'); bot.note('飾り棚の段4(2.4)');
+      bot.goto(-6.7, -1.72, 0.06, 3); bot.jumpToward(-6.7, -0.6, 3, 'stand'); bot.note('2階の床（南）(3.0)');
     } else {
       // 吹き抜けの高窓のカーテンを登って出窓の棚へ
-      bot.goto(-7.5, -3.5, 0.25, 10); bot.note('カーテンの前');
-      const climbed = bot.climb(); bot.note(`カーテンを登る(${climbed ? '登り切り' : '失敗'})`);
-      bot.goto(-7.85, -2.8, 0.2, 5); bot.note('出窓の棚(3.0)');
-      bot.jumpToward(-7.6, -1.5); bot.note('2階の床（西・南）へ跳ぶ');
-      bot.goto(-6.6, -0.6, 0.25, 6); bot.note('2階の床（南）');
+      bot.goto(-5.9, -1.9, 0.25, 10); bot.note('麻ひもの柱の前');
+      const climbed = bot.climb(0, 1); bot.note(`柱を登る(${climbed ? '登り切り' : '失敗'})`);
+      bot.goto(-5.9, 0.3, 0.25, 6); bot.note('2階の床（南）');
     }
 
     // 2階 → 手すり → 梁 → 猫ベッド
-    bot.goto(-6.7, -0.4, 0.2, 5); bot.goto(-3.0, -0.5, 0.25, 8); bot.goto(-1.5, -0.6, 0.25, 6);
+    bot.goto(-6.6, 0.9, 0.25, 6); bot.goto(-3.0, 0.9, 0.25, 8); bot.goto(-1.5, -0.3, 0.25, 8);
     bot.note('吹き抜けの東がわへ回る');
-    bot.goto(-1.55, -2.3, 0.2, 6); bot.note('手すりの横');
-    bot.jumpToward(-1.92, -2.3); bot.note('手すり（東）(3.8)');
-    bot.goto(-1.92, -4.3, 0.2, 6); bot.note('手すりを北へ');
-    bot.jumpToward(-1.92, -3.5); bot.note('梁(4.4)へ跳ぶ');
+    bot.goto(-1.15, -2.3, 0.2, 6); bot.note('手すりの横');
+    bot.jumpToward(-1.89, -2.3, 3, 'stand'); bot.note('手すり（東）(3.8)');
+    bot.goto(-1.89, -4.3, 0.15, 6); bot.note('手すりを北へ');
+    bot.jumpToward(-1.89, -3.5, 3, 'stand'); bot.note('梁(4.4)へ跳ぶ');
     bot.goto(-2.9, -3.5, 0.12, 5); bot.claw(); bot.note('猫ベッドに爪');
     const cleared = g.cat.isResting;
     results.push(`家ルート${route}：${cleared ? '✓ クリア' : '✗ 届かなかった'}` + nl + '  ' + bot.log.join(nl + '  '));

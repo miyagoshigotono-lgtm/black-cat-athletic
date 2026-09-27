@@ -796,19 +796,20 @@ function houseChecks({ stage, byName, errors, infos }: Ctx): void {
   };
   // 登れる面・ギミックのつながり
   const climbEdges: Array<[string, string]> = [
-    ['1階の床', '出窓の棚'],            // 吹き抜けの高窓のカーテンを登る
+    ['1階の床', '2階の床（南）'],        // 麻ひもの柱を登る
     ['2階の床（北）', 'タンス'],         // 引き出しを開けて段にし、タンスの上へ
     ['1階の床', '階段1段目'],           // 階段室のドアを開ける
   ];
   const route = reachability(stage, setup, '庭', climbEdges);
-  const key = ['1階の床', '飾り棚の段4', '出窓の棚', '2階の床（西・南）', '2階の床（東）', '手すり（東）', 'タンス', '2階の本棚（上段）', '梁', '梁（南北）', '猫ベッド・クッション'];
+  const key = ['1階の床', '飾り棚の段4', '2階の床（西・南）', '2階の床（東）', '手すり（東）', 'タンス', '2階の本棚（上段）', '梁', '梁（南北）', '猫ベッド・クッション'];
   infos.push('到達できるまでの移動回数：' + key.map((k) => `${k} ${moves(route, k) ?? '×'}`).join('、'));
 
   const goal = moves(route, '猫ベッド・クッション');
   if (goal === undefined) errors.push('ゴール（猫ベッド）まで行けない');
   else {
     infos.push(`ゴールまで最短 ${goal} 回の移動：${route.get('猫ベッド・クッション')!.join(' → ')}`);
-    if (goal < 6) errors.push(`ゴールへ ${goal} 回で行けてしまう（近道がある）`);
+    // 登り（麻ひもの柱など）は1回の移動として数えるので、家は少なめになる
+    if (goal < 4) errors.push(`ゴールへ ${goal} 回で行けてしまう（近道がある）`);
   }
   if (!route.has('1階の床')) errors.push('網戸のすき間から家に入れない');
 
