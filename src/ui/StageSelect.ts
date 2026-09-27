@@ -1,4 +1,5 @@
 import type { StageDef } from '../stages/stageTypes';
+import { isCleared } from '../core/progress';
 
 /** 選べるステージの並び（プレイ順）。stage が無い物は「準備中」として出す */
 export interface StageEntry {
@@ -37,6 +38,12 @@ export function showStageSelect(parent: HTMLElement, entries: StageEntry[]): Pro
       const name = document.createElement('span');
       name.className = 'stage-select-name';
       name.textContent = entry.label;
+      if (entry.stage && isCleared(entry.id)) {
+        const done = document.createElement('span');
+        done.className = 'stage-select-done';
+        done.textContent = 'クリア済み';
+        name.appendChild(done);
+      }
       const note = document.createElement('span');
       note.className = 'stage-select-note';
       note.textContent = entry.note;
@@ -51,6 +58,13 @@ export function showStageSelect(parent: HTMLElement, entries: StageEntry[]): Pro
       list.appendChild(button);
     }
     el.appendChild(list);
+
+    const help = document.createElement('div');
+    help.className = 'stage-select-help';
+    help.textContent = 'PC：WASD 移動／マウス 視点／Space ジャンプ／Shift 爪　'
+      + 'スマホ：左で移動／右でスワイプ視点／右下のボタンでジャンプと爪';
+    el.appendChild(help);
+
     parent.appendChild(el);
   });
 }

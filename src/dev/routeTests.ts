@@ -142,6 +142,15 @@ class Bot {
     return !this.g.cat.isClimbing;
   }
 
+  /** 届くまで何回か跳んでみる（際どい跳躍の確認用）。届いたら true */
+  jumpUntil(x: number, z: number, minY: number, tries = 3, mode: 'run' | 'stand' = 'run'): boolean {
+    for (let i = 0; i < tries; i++) {
+      this.jumpToward(x, z, 3, mode);
+      if (this.pos.y >= minY) return true;
+    }
+    return false;
+  }
+
   claw(): void {
     this.g.input.pressClaw();
     this.step();
@@ -334,12 +343,14 @@ function runHouseTest(game: Game): string {
 
     if (route === 'A') {
       // リビングの本棚を登って2階の床（南）へ
-      bot.goto(-6.7, -4.75, 0.2, 10); bot.note('飾り棚の北がわ');
-      bot.jumpToward(-6.7, -3.95, 3, 'stand'); bot.note('飾り棚の段1(0.6)');
-      bot.jumpToward(-6.7, -3.15, 3, 'stand'); bot.note('飾り棚の段2(1.2)');
-      bot.jumpToward(-6.7, -2.35, 3, 'stand'); bot.note('飾り棚の段3(1.8)');
-      bot.jumpToward(-6.7, -1.55, 3, 'stand'); bot.note('飾り棚の段4(2.4)');
-      bot.goto(-6.7, -1.72, 0.06, 3); bot.jumpToward(-6.7, -0.6, 3, 'stand'); bot.note('2階の床（南）(3.0)');
+      bot.goto(-6.9, 5.0, 0.25, 8); bot.goto(-6.9, 0.5, 0.25, 8); bot.goto(-6.75, -5.62, 0.07, 12);
+      bot.note('飾り棚の北がわ');
+      bot.jumpToward(-6.7, -4.7, 3, 'stand'); bot.note('飾り棚の段1(0.6)');
+      bot.jumpToward(-6.7, -3.95, 3, 'stand'); bot.note('飾り棚の段2(1.08)');
+      bot.jumpToward(-6.7, -3.2, 3, 'stand'); bot.note('飾り棚の段3(1.56)');
+      bot.jumpToward(-6.7, -2.45, 3, 'stand'); bot.note('飾り棚の段4(2.04)');
+      bot.jumpToward(-6.7, -1.7, 3, 'stand'); bot.note('飾り棚の段5(2.52)');
+      bot.jumpUntil(-6.7, -0.75, 2.9); bot.note('2階の床（南）(3.0)');
     } else {
       // 吹き抜けの高窓のカーテンを登って出窓の棚へ
       bot.goto(-5.9, -1.9, 0.25, 10); bot.note('麻ひもの柱の前');

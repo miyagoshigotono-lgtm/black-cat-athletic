@@ -1,6 +1,7 @@
 import RAPIER from '@dimforge/rapier3d-compat';
 import * as THREE from 'three';
 import { ConvexGeometry } from 'three/addons/geometries/ConvexGeometry.js';
+import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import type { Physics } from '../core/Physics';
 import type { BoxColor, SolidDef, StageDef } from './stageTypes';
 import { beamFrame, clumpPoints } from './geometry';
@@ -55,17 +56,26 @@ export function buildStage(scene: THREE.Scene, physics: Physics, stage: StageDef
   };
 
   // --- 軸にそろった箱 ---
-  const unitBox = new THREE.BoxGeometry(1, 1, 1);
+  // 描画は色ごとに1つのメッシュへまとめる（箱は動かないので、ドローコールを減らせる）。
+  // 当たり判定は箱ごとに作る（数は変わらない）。
+  const shapesByColor = new Map<BoxColor, THREE.BufferGeometry[]>();
   for (const b of stage.boxes) {
     // 中心 y = 上面 − 厚み/2
     const cy = b.top - b.h / 2;
-    const mesh = new THREE.Mesh(unitBox, material(b.color));
-    mesh.position.set(b.x, cy, b.z);
-    mesh.scale.set(b.w, b.h, b.d);
-    mesh.matrixAutoUpdate = false;
-    mesh.updateMatrix();
-    scene.add(mesh);
+    const geo = new THREE.BoxGeometry(b.w, b.h, b.d);
+    geo.translate(b.x, cy, b.z);
+    const list = shapesByColor.get(b.color);
+    if (list) list.push(geo);
+    else shapesByColor.set(b.color, [geo]);
     physics.addStaticBox({ x: b.x, y: cy, z: b.z }, { x: b.w / 2, y: b.h / 2, z: b.d / 2 });
+  }
+  for (const [color, geos] of shapesByColor) {
+    const merged = mergeGeometries(geos, false);
+    for (const g of geos) g.dispose();
+    if (!merged) continue;
+    const mesh = new THREE.Mesh(merged, material(color));
+    mesh.matrixAutoUpdate = false;
+    scene.add(mesh);
   }
 
   // --- 自然物（幹・枝・葉の塊・岩） ---

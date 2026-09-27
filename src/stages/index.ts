@@ -20,6 +20,14 @@ export const STAGE_ENTRIES: StageEntry[] = [
   { id: 'house', label: '3. 家', note: '吹き抜けの梁の上、猫ベッドへ', stage: HOUSE_STAGE },
 ];
 
+/** プレイ順で次のステージ（無ければ null） */
+export function nextStage(id: string): StageEntry | null {
+  const i = STAGE_ENTRIES.findIndex((e) => e.id === id);
+  if (i < 0) return null;
+  const next = STAGE_ENTRIES[i + 1];
+  return next?.stage ? next : null;
+}
+
 /** URL で直接指定されたステージ（?stage=<id>）。指定が無ければ null（選択画面を出す） */
 export function getStageFromUrl(): StageDef | null {
   const id = new URLSearchParams(location.search).get('stage');

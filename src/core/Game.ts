@@ -14,6 +14,8 @@ import { OrientationOverlay } from '../ui/OrientationOverlay';
 import { buildStage } from '../stages/buildStage';
 import type { StageDef } from '../stages/stageTypes';
 import { ClearOverlay } from '../ui/ClearOverlay';
+import { markCleared } from './progress';
+import { nextStage } from '../stages';
 import { InteractionSystem } from '../interact/InteractionSystem';
 import { ScratchMarks } from '../interact/ScratchMarks';
 import { createInteractable } from '../interact/registry';
@@ -90,7 +92,12 @@ export class Game {
     this.cat.teleport(this.startPosition); // 向きを当たり判定にも反映する
     this.scratches = new ScratchMarks(this.scene);
     this.interactions = new InteractionSystem(this.physics.world, this.cat, this.scratches);
-    this.clearOverlay = new ClearOverlay(document.body, stage.name, () => location.reload());
+    const next = nextStage(stage.id);
+    this.clearOverlay = new ClearOverlay(document.body, stage.name, {
+      onRetry: () => location.reload(),
+      onSelect: () => { location.href = location.pathname; },
+      ...(next ? { onNext: { label: `次へ：${next.label.replace(/^d+.s*/, '')}`, run: () => { location.href = `${location.pathname}?stage=${next.id}`; } } } : {}),
+    });
     const ctx = { physics: this.physics, scene: this.scene, stage, onGoal: () => this.onGoal() };
     for (const def of stage.interactables) {
       this.interactions.add(createInteractable(def, ctx));
@@ -229,6 +236,7 @@ export class Game {
   /** ゴールに爪を当てた：猫は丸くなり、少し間をおいてクリア表示 */
   private onGoal(): void {
     this.cleared = true;
+    markCleared(this.stage.id);
     this.catView.setResting(true);
     window.setTimeout(() => {
       this.clearOverlay.show();
