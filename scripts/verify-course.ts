@@ -233,9 +233,13 @@ function checkSolids(stage: StageDef, boxes: BoxDef[], errors: string[], infos: 
     });
     if (s.kind === 'cylinder') {
       if (Math.abs(s.bottom) > EPS) {
-        // 下の幹の上面に載る：自分の中心が下の幹の上面の円の中
-        const ok = hosts.some((h) => h.kind === 'cylinder' && Math.abs(h.top - s.bottom) < EPS && Math.hypot(h.x - s.x, h.z - s.z) < h.r);
-        if (!ok) errors.push(`${s.name}: 底 ${s.bottom} を支える幹が無い（宙に浮いている）`);
+        // 下の幹の上面に載る（自分の中心が上面の円の中）か、箱の上面に載る
+        const onCylinder = hosts.some((h) => h.kind === 'cylinder' && Math.abs(h.top - s.bottom) < EPS && Math.hypot(h.x - s.x, h.z - s.z) < h.r);
+        const onBox = boxes.some((b) => {
+          const c = aabb(b);
+          return Math.abs(c.maxY - s.bottom) < EPS && s.x > c.minX && s.x < c.maxX && s.z > c.minZ && s.z < c.maxZ;
+        });
+        if (!onCylinder && !onBox) errors.push(`${s.name}: 底 ${s.bottom} を支える物が無い（宙に浮いている）`);
       }
     } else if (s.kind === 'clump') {
       const onGround = Math.abs(s.y - s.ry) < 0.01;
@@ -363,6 +367,7 @@ function collectSurfaces(stage: StageDef, setup: ReachSetup): Surface[] {
 
   for (const b of allBoxes(stage)) {
     if (b.isGround || setup.skipBox(b)) continue;
+    if (b.w < 0.12 || b.d < 0.12) continue; // 細すぎて猫が立てない（机の脚・画面など）
     const pts: Vec3[] = [];
     for (const x of sampleRange(b.x - b.w / 2, b.x + b.w / 2)) {
       for (const z of sampleRange(b.z - b.d / 2, b.z + b.d / 2)) {
@@ -644,8 +649,10 @@ function forestChecks({ stage, byName, errors, infos }: Ctx): void {
   // --- どこからどこへ行けるか（地面から順にたどる）---
   const forestSetup: ReachSetup = {
     region: (_x, z) => (z > fence.maxZ ? '地面（手前）' : '地面（奥）'),
-    // 上面が高すぎる壁（茂み・工場）は足場にしない。塀の上は足場になる
+    // 上面が高すぎる壁（茂み・工場）は足場にしない
     skipBox: (b) => b.top > 3.5,
+    // 塀を跳び越える着地点を細かく見るため、地面の点を 0.5m 刻みにする
+    groundStep: 0.5,
   };
   const withVine = reachability(stage, forestSetup, '地面（手前）', [['地面（手前）', '①の木・幹']]);
   const withoutVine = reachability(stage, forestSetup, '地面（手前）', []);
@@ -698,8 +705,15 @@ function factoryChecks({ stage, byName, errors, infos }: Ctx): void {
     // 壁・シャッターの上には立てない（上に屋根が載っている）
     skipBox: (b) => NOT_FOOTING.has(b.name),
   };
-  // 金網（機械Bの東面）は、踏み台の木箱から登って機械Bの上に出る
-  const route = reachability(stage, setup, '工場の床', [['踏み台の木箱', '機械B']]);
+  // 登れる面（押し当てて登る）は、跳ぶ以外のつながりとして渡す
+  const climbEdges: Array<[string, string]> = [
+    ['踏み台の木箱', '機械B'],          // 機械Bの金網
+    ['工場の床', '中2階の踊り場'],       // 点検はしご（東壁）
+    ['工場の床', '木箱の山（ネット）'],   // 荷崩れ防止ネット
+    ['工場の床', '機械A'],              // 立てかけた木パレット
+    ['キャットウォーク', '鉄骨A'],       // 点検はしご（西壁）
+  ];
+  const route = reachability(stage, setup, '屋外の地面', climbEdges);
   const key = [
     '木箱C', 'コンベア', '機械B', 'ダクト（横）', 'キャットウォーク', '鉄骨A', '鉄骨B',
     'ダクト（天窓へ）', '工場の屋根（天窓の北）', '屋外ダクト', '室外機・架台', '事務所の屋根',
@@ -714,14 +728,14 @@ function factoryChecks({ stage, byName, errors, infos }: Ctx): void {
     if (goal < 10) errors.push(`ゴールへ ${goal} 回で行けてしまう（近道がある）`);
   }
   // 事務所の窓へは、工場の中を登って屋根を通るしかないこと（外から直接登れない）
-  const outside = reachability(stage, setup, '屋外の地面', []);
+  const outside = reachability(stage, setup, '屋外の地面', climbEdges);
   const toWindow = outside.get('窓台');
   if (!toWindow) errors.push('屋外から窓台へ行けない');
   else if (!toWindow.some((n) => n.includes('屋根'))) {
     errors.push('屋根を通らずに事務所の窓へ行けてしまう：' + toWindow.join(' → '));
   }
   // 落ちても詰まないこと（屋外へ落ちたら、シャッターの下から工場へ戻れる）
-  if (!outside.has('工場の床')) errors.push('屋外へ落ちると工場に戻れない（詰み）');
+  if (!route.has('工場の床')) errors.push('シャッターの下から工場へ入れない');
 
   // 天窓の穴：猫が通れる広さか
   const north = byName('工場の屋根（天窓の北）');

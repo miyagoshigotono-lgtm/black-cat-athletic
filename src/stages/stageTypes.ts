@@ -28,7 +28,9 @@ export type BoxColor =
   | 'steel'
   | 'roof'
   | 'crate'
-  | 'desk';
+  | 'desk'
+  | 'screen'
+  | 'paper';
 
 export interface BoxDef {
   /** 識別名（検算ログ用） */
@@ -195,6 +197,11 @@ export interface StageDef {
   start: { x: number; y: number; z: number; facing: number };
   /** 背景色（空） */
   sky: number;
+  /**
+   * 導入演出でカメラが通る点（ゴールのそば → ここ → 猫）。
+   * 壁を突き抜けないよう、窓の外・屋根の上などを順に指定する。
+   */
+  introPath?: ReadonlyArray<readonly [number, number, number]>;
   /** 地面に 1m 間隔の目盛りを出すか（検証用） */
   showGrid?: boolean;
 }

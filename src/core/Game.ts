@@ -4,6 +4,7 @@ import { CatController } from '../player/CatController';
 import { CatView } from '../player/CatView';
 import { PlayCamera } from '../camera/PlayCamera';
 import { CameraRig } from '../camera/CameraRig';
+import { IntroCamera } from '../camera/IntroCamera';
 import { InputState } from '../input/InputState';
 import { KeyboardMouseInput } from '../input/KeyboardMouseInput';
 import { TouchInput } from '../input/TouchInput';
@@ -38,6 +39,8 @@ export class Game {
   private readonly scene = new THREE.Scene();
   private readonly physics = new Physics();
   private readonly input = new InputState();
+  /** 導入演出の間に猫へ渡す、何も押していない入力 */
+  private readonly idleInput = new InputState();
   private readonly cat: CatController;
   private readonly catView: CatView;
   private readonly rig: CameraRig;
@@ -49,6 +52,8 @@ export class Game {
   private readonly scratches: ScratchMarks;
   private readonly clearOverlay: ClearOverlay;
   private readonly startPosition: { x: number; y: number; z: number };
+  private readonly skipHint: HTMLDivElement | null;
+  private skipHandlers: (() => void) | null;
 
   /** ゴール済み（操作案内を出さない） */
   private cleared = false;
@@ -109,6 +114,25 @@ export class Game {
     this.lockHint.textContent = 'クリックで操作開始（WASD 移動 / マウス 視点 / Space ジャンプ / Esc 解除）';
     document.body.appendChild(this.lockHint);
 
+    // --- 導入演出（ゴールを見せてから猫へ寄る。触ると飛ばせる） ---
+    const goal = stage.interactables.find((d) => d.kind === 'goal');
+    if (goal && goal.kind === 'goal') {
+      this.skipHint = document.createElement('div');
+      this.skipHint.className = 'lock-hint';
+      this.skipHint.textContent = '画面を触る・クリックで演出を飛ばす';
+      document.body.appendChild(this.skipHint);
+      const goalPos = new THREE.Vector3(goal.x, (goal.baseY ?? 0) + goal.height, goal.z);
+      this.rig.startIntro(new IntroCamera(goalPos, stage.introPath ?? [[goalPos.x, goalPos.y + 12, goalPos.z]]));
+      this.lockHint.classList.add('hidden'); // 演出中は操作案内を出さない
+      const skip = () => this.endIntro();
+      this.skipHandlers = skip;
+      window.addEventListener('pointerdown', skip);
+      window.addEventListener('keydown', skip);
+    } else {
+      this.skipHint = null;
+      this.skipHandlers = null;
+    }
+
     const isTouchDevice = window.matchMedia('(pointer: coarse)').matches;
     this.setTouchMode(isTouchDevice);
     // 途中でタッチされた場合（タッチ対応PCなど）もタッチ操作に切り替える
@@ -138,14 +162,17 @@ export class Game {
     this.lastTime = now;
 
     this.keyboardMouse.update();
+    const intro = this.rig.mode === 'intro';
+    // 演出中は操作を受け付けない（猫はその場で立っている）
+    const input = intro ? this.idleInput : this.input;
 
     // --- 物理（固定刻み） ---
     this.accumulator += dt;
     let steps = 0;
     while (this.accumulator >= FIXED_DT && steps < MAX_STEPS_PER_FRAME) {
       // 爪の処理（登りの開始・終了、ドアの開閉など）→ 猫の移動 → 物理
-      this.interactions.fixedUpdate(FIXED_DT, this.input);
-      this.cat.fixedUpdate(FIXED_DT, this.input, this.rig.controlYaw);
+      this.interactions.fixedUpdate(FIXED_DT, input);
+      this.cat.fixedUpdate(FIXED_DT, input, this.rig.controlYaw);
       this.physics.step(FIXED_DT);
       this.accumulator -= FIXED_DT;
       steps++;
@@ -158,7 +185,8 @@ export class Game {
     // --- 描画 ---
     const alpha = this.accumulator / FIXED_DT;
     this.cat.getInterpolatedCenter(alpha, this.catCenter);
-    this.rig.update(dt, this.input, this.catCenter);
+    this.rig.update(dt, input, this.catCenter);
+    if (intro && this.rig.mode === 'play') this.endIntro();
     this.catView.update(
       dt,
       this.physics.world,
@@ -181,6 +209,19 @@ export class Game {
         `速さ ${this.cat.animSpeed.toFixed(2)} m/s / カメラ距離 ${this.rig.play.currentDistance.toFixed(2)} m`,
       );
       this.hud.update(dt, this.renderer);
+    }
+  }
+
+  /** 導入演出を終える（飛ばした・最後まで再生した） */
+  private endIntro(): void {
+    this.rig.skipIntro();
+    this.skipHint?.classList.add('hidden');
+    this.lockHint.classList.toggle('hidden',
+      this.touchControls.visible || this.keyboardMouse.isLocked || this.cleared);
+    if (this.skipHandlers) {
+      window.removeEventListener('pointerdown', this.skipHandlers);
+      window.removeEventListener('keydown', this.skipHandlers);
+      this.skipHandlers = null;
     }
   }
 

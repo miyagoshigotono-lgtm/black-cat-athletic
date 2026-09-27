@@ -26,7 +26,9 @@ npm run build          # 型チェック＋本番ビルド（dist/）
 - 登る：ツタや金網に**体を押し当てるだけ**で張り付いて登れる（爪は不要）。ジャンプで後ろへ飛び降り、上まで登ると乗り越え、下まで降りると四つ足に戻る
 - 爪：何にでも引っかいて爪痕が付く。ドアは押すたびに開閉し、ゴールの段ボールは爪でクリア
   - 森：板塀の向こうのゴール（段ボール）へ。越え方は3通り（ツタの木／倒木／岩）。行き止まりの枝・岩・倒木も混ざっている
-  - 工場：中を登って天窓から屋根へ出て、事務所の窓から入り、机のキーボードで寝る。1本道だが登り方は所々で選べる
+  - 工場：建物の外から始まる。シャッターの開いた所を見つけて中へ入り、登って天窓から屋根へ出て、事務所の窓から入り、机のキーボードで寝る
+  - 登れる物（押し当てて登る）：ツタ・金網・点検はしご・荷崩れ防止ネット・立てかけた木パレット
+  - ステージの最初にゴールを見せる演出が入る（画面を触る・クリック・キーで飛ばせる）
   - 検証コース：開始地点から後ろ側に、自立した金網・金網付きの登り台（高さ 2m）・ドア付きの小部屋がある
 - 猫の速さ・ジャンプなどの値は決まったので、調整パネルは廃止した（値は src/player/CatParams.ts）
 - 45°より急な面には立てない（岩の丸い側面は滑り落ちる）。低い段差は歩いて乗り越える
@@ -51,7 +53,7 @@ src/
 ├─ main.ts                 起動（RAPIER.init() → Game）
 ├─ core/     Game（固定60Hz物理＋可変描画）、Physics（Rapier World）
 ├─ player/   CatController（キネマティック・キャラクターコントローラー）、CatView、CatParams（調整値）
-├─ camera/   PlayCamera（三人称・めり込み対策）、CameraRig（導入演出カメラ用の切り替え土台）
+├─ camera/   PlayCamera（三人称・めり込み対策）、IntroCamera（導入演出）、CameraRig（切り替え）
 ├─ input/    InputState（共通入力）、KeyboardMouseInput、TouchInput
 ├─ ui/       TouchControls、OrientationOverlay、StageSelect、ClearOverlay、DebugHud（?debug=1 のときだけ）
 ├─ interact/ 爪の仕組み（InteractionSystem、爪痕、対象：登れる面 Climbable・ドア Door・ゴール Goal・皿 Dish、種類の登録 registry）

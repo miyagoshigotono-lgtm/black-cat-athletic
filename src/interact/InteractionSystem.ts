@@ -109,28 +109,31 @@ export class InteractionSystem {
     const right = { x: Math.cos(f), z: -Math.sin(f) };
     const maxDist = CAT_SHAPE.length / 2 + CLAW_REACH;
 
-    // 足元に対象がある（対象の上に乗っている）なら、それを掻く。
+    // 足元（体の下・鼻先の下）に対象があれば、それを掻く。
     // 机の上のキーボードのように、上に乗ってから爪を立てる物のため。対象以外の床は拾わない
-    const underRay = new RAPIER.Ray(
-      { x: center.x, y: center.y, z: center.z },
-      { x: 0, y: -1, z: 0 },
-    );
-    const under = this.world.castRayAndGetNormal(
-      underRay,
-      CAT_SHAPE.height / 2 + 0.12,
-      true,
-      undefined,
-      undefined,
-      this.cat.collider,
-      undefined,
-      (c) => this.byCollider.has(c.handle),
-    );
-    if (under) {
-      return {
-        collider: under.collider,
-        point: new THREE.Vector3(center.x, center.y - under.timeOfImpact, center.z),
-        normal: new THREE.Vector3(under.normal.x, under.normal.y, under.normal.z).normalize(),
+    for (const ahead of [0, CAT_SHAPE.length / 2 - 0.04]) {
+      const from = {
+        x: center.x + dir.x * ahead,
+        y: center.y,
+        z: center.z + dir.z * ahead,
       };
+      const under = this.world.castRayAndGetNormal(
+        new RAPIER.Ray(from, { x: 0, y: -1, z: 0 }),
+        CAT_SHAPE.height / 2 + 0.12,
+        true,
+        undefined,
+        undefined,
+        this.cat.collider,
+        undefined,
+        (c) => this.byCollider.has(c.handle),
+      );
+      if (under) {
+        return {
+          collider: under.collider,
+          point: new THREE.Vector3(from.x, from.y - under.timeOfImpact, from.z),
+          normal: new THREE.Vector3(under.normal.x, under.normal.y, under.normal.z).normalize(),
+        };
+      }
     }
 
     let best: RAPIER.RayColliderIntersection | null = null;

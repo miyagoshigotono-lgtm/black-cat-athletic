@@ -185,4 +185,6 @@ export const FOREST_STAGE: StageDef = {
   interactables,
   start: { x: 0, y: 0, z: 5.2, facing: 0 },
   sky: 0xbcd8e6,
+  // 導入演出：ゴールから塀を越えて、森の上を通ってスタート地点へ
+  introPath: [[0, 4.0, -7.5], [0, 12.0, -1.0], [1.5, 8.0, 8.0]],
 };

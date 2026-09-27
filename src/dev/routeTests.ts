@@ -200,7 +200,10 @@ function runFactoryTest(game: Game): string {
   const bot = new Bot(g);
   bot.start(s.x, s.y, s.z, s.facing);
 
-  bot.goto(3.6, 16.7, 0.15, 6); bot.note('パレットの上(0.12)');
+  bot.goto(3.0, 21.6, 0.25, 8); bot.note('シャッターの前を西へ');
+  bot.goto(1.7, 21.1, 0.15, 5); bot.note('開いている所の前');
+  bot.goto(1.7, 19.2, 0.2, 5); bot.note('シャッターの下をくぐって中へ');
+  bot.goto(3.6, 16.7, 0.2, 8); bot.note('パレットの上(0.12)');
   bot.jumpToward(3.6, 15.9); bot.note('木箱A(0.8)');
   bot.goto(4.05, 15.2, 0.12, 4); bot.jumpToward(4.45, 14.75); bot.note('木箱B(1.55)');
   bot.goto(4.4, 14.0, 0.12, 4); bot.jumpToward(3.9, 13.6); bot.note('木箱C(2.3)');
@@ -235,7 +238,7 @@ function runFactoryTest(game: Game): string {
   bot.goto(-6.0, -17.3, 0.2, 10); bot.note('椅子の手前');
   bot.jumpToward(-6.0, -17.9); bot.note('椅子の上(4.45)');
   bot.jumpToward(-6.0, -18.75); bot.note('机の上(4.72)');
-  bot.goto(-6.0, -19.15, 0.08, 4); bot.claw(); bot.note('キーボードに爪');
+  bot.goto(-6.0, -18.95, 0.08, 4); bot.claw(); bot.note('キーボードに爪');
   const cleared = g.cat.isResting;
   const nl = String.fromCharCode(10);
   const report = `工場：${cleared ? '✓ クリア' : '✗ 届かなかった'}` + nl + '  ' + bot.log.join(nl + '  ');

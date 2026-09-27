@@ -49,6 +49,12 @@ export class PlayCamera {
 
   private probe: RAPIER.Ball;
   private readonly target = new THREE.Vector3();
+
+  /** 今の注視点（猫の少し上）。導入演出カメラが終わりの向きを合わせるのに使う */
+  get lookTarget(): THREE.Vector3 {
+    return this.target;
+  }
+
   private readonly dir = new THREE.Vector3();
   private readonly identityRot = { x: 0, y: 0, z: 0, w: 1 };
 
