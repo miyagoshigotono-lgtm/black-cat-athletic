@@ -88,6 +88,8 @@ export interface BeamDef {
   thickness: number;
   color: BoxColor;
   attachedTo?: string[];
+  /** 歩いて上れる傾き（30°）の上限を当てはめない（動くコンベアなど） */
+  steep?: boolean;
 }
 
 /** 丸い塊（葉の塊・岩）。中心 (x, y, z)、横の半径 r、縦の半径 ry。上面は平ら（乗れる） */
@@ -182,7 +184,70 @@ export interface DishDef {
   height: number;
 }
 
-export type InteractableDef = ClimbableDef | DoorDef | GoalDef | DishDef;
+/**
+ * スイッチ：爪で押すたびに、つながっている物（コンベアなど）が動く／止まる（可逆）。
+ * 壁や機械の面に付ける板として置く。
+ */
+export interface SwitchDef {
+  kind: 'switch';
+  name: string;
+  /** 盤の中心 */
+  x: number;
+  y: number;
+  z: number;
+  w: number;
+  d: number;
+  height: number;
+  /** つながっている物（コンベアなど）の名前 */
+  targets: string[];
+  /** 最初から動いているか（既定：止まっている） */
+  on?: boolean;
+}
+
+/**
+ * 動くベルト（コンベア）。動いているとき、上に乗った猫を p1 → p2 の向きへ運ぶ。
+ * 止まっているときはただの坂（急なら登れない）。p1・p2 は上面の中心線の両端。
+ */
+export interface ConveyorDef {
+  kind: 'conveyor';
+  name: string;
+  p1: [number, number, number];
+  p2: [number, number, number];
+  width: number;
+  thickness: number;
+  /** 運ぶ速さ [m/s] */
+  speed: number;
+  on?: boolean;
+  attachedTo?: string[];
+}
+
+/**
+ * 押して動かせる台車。爪を当てるたびに、ずれた位置 ↔ 元の位置 を行き来する（可逆）。
+ * 猫が上に乗っている間は動かない（乗ったまま運ばれない）。
+ */
+export interface MovableDef {
+  kind: 'movable';
+  name: string;
+  x: number;
+  z: number;
+  w: number;
+  d: number;
+  top: number;
+  h: number;
+  /** 押したときに動く量 */
+  moveX: number;
+  moveZ: number;
+}
+
+export type InteractableDef = ClimbableDef | DoorDef | GoalDef | DishDef | SwitchDef | ConveyorDef | MovableDef;
+
+/** コンベアの形（検算と組み立てでは、傾いた板と同じ扱いにする） */
+export function conveyorBeam(c: ConveyorDef): BeamDef {
+  return {
+    kind: 'beam', name: c.name, p1: c.p1, p2: c.p2, width: c.width, thickness: c.thickness,
+    color: 'metal', steep: true, ...(c.attachedTo ? { attachedTo: c.attachedTo } : {}),
+  };
+}
 
 /** ステージ全体 */
 export interface StageDef {

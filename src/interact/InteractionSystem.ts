@@ -57,6 +57,17 @@ export class InteractionSystem {
     for (const c of item.colliders) this.byCollider.set(c.handle, item);
   }
 
+  /** 開発時の確認用：登録されている対象の一覧 */
+  get all(): readonly Interactable[] {
+    return this.items;
+  }
+
+  /** すべての対象を追加し終えたら呼ぶ：名前でつながる物（スイッチ → コンベア）を解決する */
+  link(): void {
+    const find = (name: string): Interactable | undefined => this.items.find((o) => o.name === name);
+    for (const item of this.items) item.link?.(find);
+  }
+
   /** 物理ステップごと（猫の更新の前）に呼ぶ */
   fixedUpdate(dt: number, input: InputState): void {
     // 押している間続く動作：猫の側で終わったら解除
@@ -68,7 +79,7 @@ export class InteractionSystem {
     // 前へ進もうとして登れる面に当たっていれば、爪なしで登り始める
     if (this.cat.canAutoClimb && Math.hypot(input.moveX, input.moveY) > 0.3) this.tryTouch();
 
-    for (const item of this.items) item.fixedUpdate?.(dt);
+    for (const item of this.items) item.fixedUpdate?.(dt, this.cat);
   }
 
   /** 体を押し当てて始まる動作（登れる面）を試す */

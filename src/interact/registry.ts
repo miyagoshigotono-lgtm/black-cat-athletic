@@ -6,6 +6,9 @@ import { Climbable } from './Climbable';
 import { Door } from './Door';
 import { Goal } from './Goal';
 import { Dish } from './Dish';
+import { Switch } from './Switch';
+import { Conveyor } from './Conveyor';
+import { Movable } from './Movable';
 
 /** 対象を作るときに渡す、ステージ側の道具と通知先 */
 export interface InteractableContext {
@@ -30,6 +33,9 @@ const factories: { [K in InteractableDef['kind']]: Factory<K> } = {
   door: (def, ctx) => new Door(def, ctx.physics.world, ctx.scene),
   goal: (def, ctx) => new Goal(def, ctx.physics, ctx.scene, ctx.onGoal),
   dish: (def, ctx) => new Dish(def, ctx.physics, ctx.scene),
+  switch: (def, ctx) => new Switch(def, ctx.physics, ctx.scene),
+  conveyor: (def, ctx) => new Conveyor(def, ctx.physics, ctx.scene),
+  movable: (def, ctx) => new Movable(def, ctx.physics, ctx.scene),
 };
 
 export function createInteractable(def: InteractableDef, ctx: InteractableContext): Interactable {

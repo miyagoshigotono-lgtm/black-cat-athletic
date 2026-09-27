@@ -26,6 +26,11 @@ export class CatController {
 
   /** 現在の速度 [m/s] */
   readonly velocity = new THREE.Vector3();
+  /**
+   * 動く床（コンベア）に運ばれる速度 [m/s]。
+   * 毎ステップ、対象側が足し込み、移動に反映したら 0 に戻す。
+   */
+  readonly carry = new THREE.Vector3();
   /** 接地しているか（直近の物理ステップの結果） */
   grounded = false;
   /** 猫の向き（Y軸回りの角度。0 で -Z を向く） */
@@ -191,11 +196,19 @@ export class CatController {
     else this.controller.enableSnapToGround(CAT_SHAPE.snapToGround);
 
     // --- 衝突を考慮した移動 ---
+    // 動く床（コンベア）に乗っている間は、急なベルトでも足が掛かる（滑り落ちない）
+    const carried = this.carry.lengthSq() > 1e-6;
+    this.controller.setMaxSlopeClimbAngle(THREE.MathUtils.degToRad(
+      carried ? CARRIED_SLOPE_DEG : CAT_SHAPE.maxSlopeClimbDeg,
+    ));
+
+    // 動く床に乗っていれば、その分も一緒に運ばれる
     const desired = {
-      x: this.velocity.x * dt,
-      y: vyAverage * dt,
-      z: this.velocity.z * dt,
+      x: (this.velocity.x + this.carry.x) * dt,
+      y: (vyAverage + this.carry.y) * dt,
+      z: (this.velocity.z + this.carry.z) * dt,
     };
+    this.carry.set(0, 0, 0);
     const wasGrounded = this.grounded;
     this.controller.computeColliderMovement(this.collider, desired, RAPIER.QueryFilterFlags.EXCLUDE_SENSORS);
     let moved: RAPIER.Vector = this.controller.computedMovement();
@@ -211,7 +224,7 @@ export class CatController {
     }
 
     // 急な斜面には立てない（岩の丸い側面に着地しても、そこからは跳べず滑り落ちる）
-    if (this.grounded) {
+    if (this.grounded && !carried) {
       const support = this.supportNormal(moved);
       if (support && support.y < COS_MAX_SLOPE) {
         this.grounded = false;
@@ -692,6 +705,8 @@ export interface ClimbSurface {
 const GROUND_SAMPLES: ReadonlyArray<readonly [number, number]> = [
   [0, 0], [0, 0.8], [0, -0.8], [0.8, 0.8], [-0.8, 0.8], [0.8, -0.8], [-0.8, -0.8],
 ];
+/** コンベアに運ばれている間だけ許す、足が掛かる面の角度 [度] */
+const CARRIED_SLOPE_DEG = 70;
 /** これより急な面には立てない（cos で比べる） */
 const COS_MAX_SLOPE = Math.cos(THREE.MathUtils.degToRad(CAT_SHAPE.maxSlopeClimbDeg));
 /** 急な斜面を滑り落ちる加速度 [m/s²] と、滑りで出る水平速度の上限 [m/s] */

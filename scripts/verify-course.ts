@@ -22,7 +22,7 @@ import { catParams } from '../src/player/CatParams.ts';
 import { PROTO_STAGE } from '../src/greybox/protoStage.ts';
 import { FOREST_STAGE } from '../src/stages/forest/forestData.ts';
 import { FACTORY_STAGE } from '../src/stages/factory/factoryData.ts';
-import { goalParts, type BoxDef, type DoorDef, type StageDef, type SolidDef, type ClumpDef, type BeamDef, type CylinderDef } from '../src/stages/stageTypes.ts';
+import { goalParts, conveyorBeam, type BoxDef, type DoorDef, type StageDef, type SolidDef, type InteractableDef, type ClumpDef, type BeamDef, type CylinderDef } from '../src/stages/stageTypes.ts';
 import { solidAabb, pointInSolid, beamFrame, beamCorners, beamOverlapsBox, clumpTopRadius, clumpSideSlopeDeg, type Vec3 } from '../src/stages/geometry.ts';
 
 /** 歩ける枝の傾きの上限 [度]（CatParams の滑り始める角度 30°） */
@@ -61,15 +61,25 @@ function allowedOverlap(stage: StageDef, a: string, b: string): boolean {
     && ((d.name === a && d.embeddedIn === b) || (d.name === b && d.embeddedIn === a)));
 }
 
-/** 箱として検算する物すべて（配置の箱＋登れる面＋段ボール＋ご飯皿） */
+/** 箱として検算する物すべて（配置の箱＋登れる面＋ゴール＋皿＋スイッチ＋台車） */
 function allBoxes(stage: StageDef): BoxDef[] {
   const list: BoxDef[] = [...stage.boxes];
   for (const d of stage.interactables) {
     if (d.kind === 'climbable' && !d.sensor) list.push({ name: d.name, x: d.x, z: d.z, w: d.w, d: d.d, top: d.top, h: d.h, color: 'fence' });
     if (d.kind === 'goal') list.push(...goalParts(d));
     if (d.kind === 'dish') list.push({ name: d.name, x: d.x, z: d.z, w: d.radius * 2, d: d.radius * 2, top: d.height, h: d.height, color: 'metal' });
+    if (d.kind === 'switch') list.push({ name: d.name, x: d.x, z: d.z, w: d.w, d: d.d, top: d.y + d.height / 2, h: d.height, color: 'metal', attachedTo: [] });
+    if (d.kind === 'movable') list.push({ name: d.name, x: d.x, z: d.z, w: d.w, d: d.d, top: d.top, h: d.h, color: 'metal' });
   }
   return list;
+}
+
+/** 傾いた板として検算する物すべて（自然物＋コンベア） */
+function allSolids(stage: StageDef): SolidDef[] {
+  const extra = stage.interactables
+    .filter((d): d is Extract<InteractableDef, { kind: 'conveyor' }> => d.kind === 'conveyor')
+    .map(conveyorBeam);
+  return [...(stage.solids ?? []), ...extra];
 }
 
 function verifyStage(stage: StageDef, extra: (ctx: Ctx) => void): boolean {
@@ -199,7 +209,7 @@ function verifyStage(stage: StageDef, extra: (ctx: Ctx) => void): boolean {
 
 /** 自然物（幹・傾いた枝・丸い塊）の共通チェック */
 function checkSolids(stage: StageDef, boxes: BoxDef[], errors: string[], infos: string[]): void {
-  const solids = stage.solids ?? [];
+  const solids = allSolids(stage);
   if (solids.length === 0) return;
   const find = (n: string): SolidDef | undefined => solids.find((o) => o.name === n);
   const ground = boxes.find((b) => b.isGround)!;
@@ -262,7 +272,7 @@ function checkSolids(stage: StageDef, boxes: BoxDef[], errors: string[], infos: 
           if (!otherHeld) errors.push(`${s.name}: ${label}が宙に浮いている`);
         }
       }
-      if (f.slopeDeg > MAX_WALK_SLOPE) errors.push(`${s.name}: 傾き ${fmt(f.slopeDeg)}° は歩けない（上限 ${MAX_WALK_SLOPE}°）`);
+      if (!s.steep && f.slopeDeg > MAX_WALK_SLOPE) errors.push(`${s.name}: 傾き ${fmt(f.slopeDeg)}° は歩けない（上限 ${MAX_WALK_SLOPE}°）`);
     }
 
     // 開始地点の猫と重ならない
@@ -377,7 +387,9 @@ function collectSurfaces(stage: StageDef, setup: ReachSetup): Surface[] {
     if (pts.length > 0) out.push({ name: b.name, points: pts });
   }
 
-  for (const s of stage.solids ?? []) {
+  for (const s of allSolids(stage)) {
+    // 急なベルト（止まっていると立てない）は足場にしない。動かしたときのつながりは extraEdges で渡す
+    if (s.kind === 'beam' && s.steep) continue;
     if (s.kind === 'cylinder') {
       out.push({ name: s.name, points: ringPoints(s.x, s.top, s.z, s.r * 0.6) });
     } else if (s.kind === 'clump') {
@@ -712,6 +724,8 @@ function factoryChecks({ stage, byName, errors, infos }: Ctx): void {
     ['工場の床', '木箱の山（ネット）'],   // 荷崩れ防止ネット
     ['工場の床', '機械A'],              // 立てかけた木パレット
     ['キャットウォーク', '鉄骨A'],       // 点検はしご（西壁）
+    ['工場の床', 'キャットウォーク'],     // スイッチを入れた急なコンベア
+    ['工場の床', '中2階の踊り場'],       // 押せる台車を動かして上がる
   ];
   const route = reachability(stage, setup, '屋外の地面', climbEdges);
   const key = [

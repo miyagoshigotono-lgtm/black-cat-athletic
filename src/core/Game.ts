@@ -95,6 +95,7 @@ export class Game {
     for (const def of stage.interactables) {
       this.interactions.add(createInteractable(def, ctx));
     }
+    this.interactions.link();
     this.physics.refreshQueries();
     this.catView = new CatView(this.scene);
     this.interactions.onSwipe = () => this.catView.playSwipe();

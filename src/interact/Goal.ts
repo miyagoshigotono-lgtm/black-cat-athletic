@@ -67,6 +67,11 @@ export class Goal implements Interactable {
     scene.add(canopy);
   }
 
+  /** 開発時のルート自動テスト用：何度もクリアを試せるように戻す */
+  reset(): void {
+    this.cleared = false;
+  }
+
   onClaw(_hit: ClawHit, cat: CatController): boolean {
     if (this.cleared) return false;
     this.cleared = true;

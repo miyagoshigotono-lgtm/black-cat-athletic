@@ -37,8 +37,14 @@ export interface Interactable {
   /** hold の対象で、爪を離したとき（または猫側の都合で終わったとき） */
   onRelease?(cat: CatController): void;
 
-  /** 毎物理ステップの更新（開閉の動きなど）。world.step() の前に呼ばれる */
-  fixedUpdate?(dt: number): void;
+  /** 毎物理ステップの更新（開閉の動き、コンベアが猫を運ぶなど）。world.step() の前に呼ばれる */
+  fixedUpdate?(dt: number, cat: CatController): void;
+
+  /**
+   * 名前でつながる対象を解決する（スイッチ → コンベアなど）。
+   * すべての対象を作り終えた後に一度だけ呼ばれる。
+   */
+  link?(find: (name: string) => Interactable | undefined): void;
 }
 
 /** 爪が当たった場所 */
