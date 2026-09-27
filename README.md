@@ -1,10 +1,10 @@
 # 黒猫アスレチック（仮）
 
 猫として空間を攻略する3Dアスレチック。仕様は [SPEC.md](SPEC.md) を参照。
-現在は **⑥ 工場（グレーボックス）** まで。Stage 1「工場の裏の森」と Stage 2「工場の事務所」をスタートからゴールまで遊べる。
+現在は **⑦ 家（グレーボックス）** まで。3ステージすべてをスタートからゴールまで遊べる。
 
-- 起動するとステージ選択画面が出る（1. 森 ／ 2. 工場 ／ 3. 家＝準備中）
-- URL に `?stage=<id>` を付けると選択画面を飛ばして直接開ける：`forest` / `factory` / `proto`（検証コース）
+- 起動するとステージ選択画面が出る（1. 森 ／ 2. 工場 ／ 3. 家）
+- URL に `?stage=<id>` を付けると選択画面を飛ばして直接開ける：`forest` / `factory` / `house` / `proto`（検証コース）
 
 ## 必要なもの
 
@@ -27,7 +27,9 @@ npm run build          # 型チェック＋本番ビルド（dist/）
 - 爪：何にでも引っかいて爪痕が付く。ドアは押すたびに開閉し、ゴールの段ボールは爪でクリア
   - 森：板塀の向こうのゴール（段ボール）へ。越え方は3通り（ツタの木／倒木／岩）。行き止まりの枝・岩・倒木も混ざっている
   - 工場：建物の外から始まる。シャッターの開いた所を見つけて中へ入り、登って天窓から屋根へ出て、事務所の窓から入り、机のキーボードで寝る
-  - 登れる物（押し当てて登る）：ツタ・金網・点検はしご・荷崩れ防止ネット・立てかけた木パレット
+  - 家：庭から始まる。網戸のすき間をすり抜けて中へ入り、吹き抜けを登って梁の上の猫ベッドへ
+  - 登れる物（押し当てて登る）：ツタ・金網・点検はしご・荷崩れ防止ネット・立てかけた木パレット・麻ひもの柱
+  - ギミック（可逆）：ドアの開閉、スイッチで動くコンベア、押せる台車、タンスの引き出し
   - ステージの最初にゴールを見せる演出が入る（画面を触る・クリック・キーで飛ばせる）
   - 検証コース：開始地点から後ろ側に、自立した金網・金網付きの登り台（高さ 2m）・ドア付きの小部屋がある
 - 猫の速さ・ジャンプなどの値は決まったので、調整パネルは廃止した（値は src/player/CatParams.ts）
@@ -56,8 +58,8 @@ src/
 ├─ camera/   PlayCamera（三人称・めり込み対策）、IntroCamera（導入演出）、CameraRig（切り替え）
 ├─ input/    InputState（共通入力）、KeyboardMouseInput、TouchInput
 ├─ ui/       TouchControls、OrientationOverlay、StageSelect、ClearOverlay、DebugHud（?debug=1 のときだけ）
-├─ interact/ 爪の仕組み（InteractionSystem、爪痕、対象：登れる面 Climbable・ドア Door・ゴール Goal・皿 Dish、種類の登録 registry）
-├─ stages/   ステージの型・形の計算（geometry）・組み立て・選択、forest/・factory/（配置データ）
+├─ interact/ 爪の仕組み（InteractionSystem、爪痕、対象：Climbable・Door・Goal・Dish・Switch・Conveyor・Movable、registry）
+├─ stages/   ステージの型・形の計算（geometry）・組み立て・選択、forest/・factory/・house/（配置データ）
 ├─ dev/      開発時だけ使う道具（ルートの自動テスト）
 └─ greybox/  検証コース（本番コードとは分離・使い捨て前提）
 scripts/verify-course.ts   コースの数値検算
