@@ -162,9 +162,26 @@ const plain: Array<[string, number, number, number, number]> = [
 for (const [name, x, z, r, cr] of plain) plainTree(name, x, z, r, cr);
 
 // ---------------------------------------------------------------
+// 物置小屋（スタートのすぐ近く）。爪でドアを開けて入ると、古いご飯皿がある。
+// 爪＝環境操作を、ステージの最初に一度体験させるための場所（SPEC 8.3）。
+// ---------------------------------------------------------------
+boxes.push(block('小屋・西壁', -4.7, 5.5, 0.2, 2.2, 1.6, 'boards'));
+boxes.push(block('小屋・東壁', -2.3, 5.5, 0.2, 2.2, 1.6, 'boards'));
+boxes.push(block('小屋・南壁', -3.5, 6.5, 2.2, 0.2, 1.6, 'boards'));
+boxes.push(block('小屋・北壁（東）', -3.05, 4.5, 1.3, 0.2, 1.6, 'boards'));
+boxes.push({ name: '小屋の屋根', x: -3.5, z: 5.5, w: 2.6, d: 2.4, top: 1.8, h: 0.2, color: 'boards' });
+boxes.push(block('小屋の中の木箱', -4.2, 6.0, 0.6, 0.6, 0.5, 'cardboard'));
+
+// ---------------------------------------------------------------
 // 爪の対象
 // ---------------------------------------------------------------
 const interactables: InteractableDef[] = [
+  // 物置小屋のドア（爪で開け閉め）と、中の古いご飯皿
+  {
+    kind: 'door', name: '小屋のドア',
+    hingeX: -4.6, hingeZ: 4.5, width: 0.9, height: 1.5, thickness: 0.06, bottomGap: 0.02, baseYaw: 0,
+  },
+  { kind: 'dish', name: '古いご飯皿', x: -3.2, z: 5.8, radius: 0.1, height: 0.04 },
   // ツタ：①の幹の正面（表面 z 3.22）に絡む「登れる範囲」。当たり判定は持たない（ぶつかるのは幹）
   {
     kind: 'climbable', name: 'ツタ', look: 'vine', sensor: true, embeddedIn: '①の木・幹',
