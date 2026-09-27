@@ -31,6 +31,8 @@ const COLORS: Record<BoxColor, number> = {
   desk: 0x8a7f72,
   screen: 0x2c3440,
   paper: 0xe8e4da,
+  cloth: 0xd8a8b8,
+  wood: 0xa8865f,
 };
 
 /** 丸い塊（葉・岩）は面ごとに陰影を付けて、形が分かりやすいようにする */

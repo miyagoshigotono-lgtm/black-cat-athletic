@@ -30,7 +30,9 @@ export type BoxColor =
   | 'crate'
   | 'desk'
   | 'screen'
-  | 'paper';
+  | 'paper'
+  | 'cloth'
+  | 'wood';
 
 export interface BoxDef {
   /** 識別名（検算ログ用） */
@@ -132,6 +134,11 @@ export interface ClimbableDef {
    * 丸い幹に絡んだツタなど、表面が平らでない物に使う。爪の判定と登り中の面の判定にだけ使う。
    */
   sensor?: boolean;
+  /**
+   * 宙に吊られている物（カーテンなど）の支え。
+   * 指定した箱の側面か下面に接していることを検算する。
+   */
+  attachedTo?: string[];
 }
 
 /** 開閉するドア。蝶番（回転軸）の位置から +X 方向（baseYaw で回転）に板が伸びる */
@@ -160,7 +167,7 @@ export interface GoalDef {
   kind: 'goal';
   name: string;
   /** 見た目と形（既定：段ボール） */
-  look?: 'cardboard' | 'keyboard';
+  look?: 'cardboard' | 'keyboard' | 'bed';
   /** 中心 */
   x: number;
   z: number;
@@ -237,6 +244,8 @@ export interface MovableDef {
   /** 押したときに動く量 */
   moveX: number;
   moveZ: number;
+  /** 入れ物（タンスなど）の名前。中に収まっている状態を検算で許す */
+  insideOf?: string;
 }
 
 export type InteractableDef = ClimbableDef | DoorDef | GoalDef | DishDef | SwitchDef | ConveyorDef | MovableDef;
@@ -279,8 +288,13 @@ export interface StageDef {
  */
 export function goalParts(g: GoalDef): BoxDef[] {
   const base = g.baseY ?? 0;
-  if ((g.look ?? 'cardboard') === 'keyboard') {
+  const look = g.look ?? 'cardboard';
+  if (look === 'keyboard') {
     return [{ name: `${g.name}・本体`, x: g.x, z: g.z, w: g.w, d: g.d, top: base + g.height, h: g.height, color: 'desk' }];
+  }
+  if (look === 'bed') {
+    // 猫ベッド：低いクッション1枚（縁は見た目だけ）
+    return [{ name: `${g.name}・クッション`, x: g.x, z: g.z, w: g.w, d: g.d, top: base + g.height, h: g.height, color: 'cloth' }];
   }
   const hw = g.w / 2;
   const hd = g.d / 2;

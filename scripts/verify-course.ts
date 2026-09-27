@@ -22,6 +22,7 @@ import { catParams } from '../src/player/CatParams.ts';
 import { PROTO_STAGE } from '../src/greybox/protoStage.ts';
 import { FOREST_STAGE } from '../src/stages/forest/forestData.ts';
 import { FACTORY_STAGE } from '../src/stages/factory/factoryData.ts';
+import { HOUSE_STAGE } from '../src/stages/house/houseData.ts';
 import { goalParts, conveyorBeam, type BoxDef, type DoorDef, type StageDef, type SolidDef, type InteractableDef, type ClumpDef, type BeamDef, type CylinderDef } from '../src/stages/stageTypes.ts';
 import { solidAabb, pointInSolid, beamFrame, beamCorners, beamOverlapsBox, clumpTopRadius, clumpSideSlopeDeg, type Vec3 } from '../src/stages/geometry.ts';
 
@@ -55,17 +56,25 @@ const fmt = (v: number) => Number(v.toFixed(4)).toString();
 
 const catTurnDiameter = Math.hypot(CAT_WIDTH, CAT_LENGTH);
 
-/** 重なってよい組（埋め込み） */
+/** 重なってよい組（登れる面の埋め込み、引き出しと入れ物） */
 function allowedOverlap(stage: StageDef, a: string, b: string): boolean {
-  return stage.interactables.some((d) => d.kind === 'climbable' && d.embeddedIn
-    && ((d.name === a && d.embeddedIn === b) || (d.name === b && d.embeddedIn === a)));
+  return stage.interactables.some((d) => {
+    const host = d.kind === 'climbable' ? d.embeddedIn : d.kind === 'movable' ? d.insideOf : undefined;
+    if (!host) return false;
+    return (d.name === a && host === b) || (d.name === b && host === a);
+  });
 }
 
 /** 箱として検算する物すべて（配置の箱＋登れる面＋ゴール＋皿＋スイッチ＋台車） */
 function allBoxes(stage: StageDef): BoxDef[] {
   const list: BoxDef[] = [...stage.boxes];
   for (const d of stage.interactables) {
-    if (d.kind === 'climbable' && !d.sensor) list.push({ name: d.name, x: d.x, z: d.z, w: d.w, d: d.d, top: d.top, h: d.h, color: 'fence' });
+    if (d.kind === 'climbable' && !d.sensor) {
+      list.push({
+        name: d.name, x: d.x, z: d.z, w: d.w, d: d.d, top: d.top, h: d.h, color: 'fence',
+        ...(d.attachedTo ? { attachedTo: d.attachedTo } : {}),
+      });
+    }
     if (d.kind === 'goal') list.push(...goalParts(d));
     if (d.kind === 'dish') list.push({ name: d.name, x: d.x, z: d.z, w: d.radius * 2, d: d.radius * 2, top: d.height, h: d.height, color: 'metal' });
     if (d.kind === 'switch') list.push({ name: d.name, x: d.x, z: d.z, w: d.w, d: d.d, top: d.y + d.height / 2, h: d.height, color: 'metal', attachedTo: [] });
@@ -119,8 +128,9 @@ function verifyStage(stage: StageDef, extra: (ctx: Ctx) => void): boolean {
       continue;
     }
     if (Math.abs(a.minY) < EPS) continue; // 地面に接地
-    // 埋め込まれた登れる面（金網）は、埋め込み先が支えている
-    if (stage.interactables.some((d) => d.kind === 'climbable' && d.name === b.name && d.embeddedIn)) continue;
+    // 埋め込まれた登れる面（金網）・入れ物の中の引き出しは、入れ物が支えている
+    if (stage.interactables.some((d) => d.name === b.name
+      && ((d.kind === 'climbable' && d.embeddedIn) || (d.kind === 'movable' && d.insideOf)))) continue;
     const supporters = boxes.filter((o) => {
       if (o === b) return false;
       const c = aabb(o);
@@ -128,7 +138,13 @@ function verifyStage(stage: StageDef, extra: (ctx: Ctx) => void): boolean {
         && overlap(a.minX, a.maxX, c.minX, c.maxX) > EPS
         && overlap(a.minZ, a.maxZ, c.minZ, c.maxZ) > EPS;
     });
-    if (supporters.length === 0) errors.push(`${b.name}: 底面 ${fmt(a.minY)} を支える箱がない（宙に浮いている）`);
+    // 梁や幹の上に載っている物（猫ベッドなど）も支えとして認める
+    const onSolid = allSolids(stage).some((o) => {
+      const sa = solidAabb(o);
+      return Math.abs(sa.maxY - a.minY) < 0.02
+        && b.x > sa.minX && b.x < sa.maxX && b.z > sa.minZ && b.z < sa.maxZ;
+    });
+    if (supporters.length === 0 && !onSolid) errors.push(`${b.name}: 底面 ${fmt(a.minY)} を支える物がない（宙に浮いている）`);
   }
 
   // 3. めり込み
@@ -770,10 +786,59 @@ function factoryChecks({ stage, byName, errors, infos }: Ctx): void {
   if (!(above.minY - sill.maxY > CAT_HEIGHT + 0.3)) errors.push('窓の開口が猫に対して低い');
 }
 
+/** 家：庭から入って、吹き抜けの梁の上の猫ベッドまで行けるか */
+function houseChecks({ stage, byName, errors, infos }: Ctx): void {
+  const setup: ReachSetup = {
+    // 地面は「家の中（1階）」と「庭」に分ける（壁は blocked() が遮る。網戸のすき間だけ通れる）
+    region: (x, z) => (x > -8 && x < 8 && z > -7 && z < 7 ? '1階の床' : '庭'),
+    skipBox: (b) => b.name.startsWith('家・') || b.name.startsWith('階段室の壁') || b.name === '網戸',
+    groundStep: 0.5,
+  };
+  // 登れる面・ギミックのつながり
+  const climbEdges: Array<[string, string]> = [
+    ['1階の床', '出窓の棚'],            // 吹き抜けの高窓のカーテンを登る
+    ['2階の床（北）', 'タンス'],         // 引き出しを開けて段にし、タンスの上へ
+    ['1階の床', '階段1段目'],           // 階段室のドアを開ける
+  ];
+  const route = reachability(stage, setup, '庭', climbEdges);
+  const key = ['1階の床', '飾り棚の段4', '出窓の棚', '2階の床（西・南）', '2階の床（東）', '手すり（東）', 'タンス', '2階の本棚（上段）', '梁', '梁（南北）', '猫ベッド・クッション'];
+  infos.push('到達できるまでの移動回数：' + key.map((k) => `${k} ${moves(route, k) ?? '×'}`).join('、'));
+
+  const goal = moves(route, '猫ベッド・クッション');
+  if (goal === undefined) errors.push('ゴール（猫ベッド）まで行けない');
+  else {
+    infos.push(`ゴールまで最短 ${goal} 回の移動：${route.get('猫ベッド・クッション')!.join(' → ')}`);
+    if (goal < 6) errors.push(`ゴールへ ${goal} 回で行けてしまう（近道がある）`);
+  }
+  if (!route.has('1階の床')) errors.push('網戸のすき間から家に入れない');
+
+  // 網戸のすき間：猫が通れる広さか
+  const screen = byName('網戸');
+  const win = byName('家・掃き出し窓の下');
+  const gap = win.maxX - screen.maxX;
+  infos.push(`網戸のすき間：幅 ${fmt(gap)}（猫の幅 ${CAT_WIDTH}）、サッシの高さ ${fmt(win.maxY)}`);
+  if (!(gap > CAT_WIDTH + 0.02)) errors.push('網戸のすき間が狭すぎて通れない');
+  if (!(win.maxY < 0.85)) errors.push('窓のサッシが高すぎて庭から乗れない');
+
+  // 吹き抜け：2階の床に穴が開いていること
+  const west = byName('2階の床（西・南）');
+  const east = byName('2階の床（東）');
+  const north = byName('2階の床（北）');
+  const south = byName('2階の床（南）');
+  infos.push(`吹き抜け：x ${fmt(west.maxX)}〜${fmt(east.minX)}、z ${fmt(north.maxZ)}〜${fmt(south.minZ)}、梁は 4.4`);
+  if (!(east.minX - west.maxX > 2 && south.minZ - north.maxZ > 2)) errors.push('吹き抜けが狭い');
+
+  // ソファの下：猫がくぐれるか
+  const seat = byName('ソファの座面');
+  infos.push(`ソファの下：${fmt(seat.minY)}（猫の高さ ${CAT_HEIGHT}）`);
+  if (!(seat.minY > CAT_HEIGHT + 0.02)) errors.push('ソファの下を猫がくぐれない');
+}
+
 const ok = [
   verifyStage(PROTO_STAGE, protoChecks),
   verifyStage(FOREST_STAGE, forestChecks),
   verifyStage(FACTORY_STAGE, factoryChecks),
+  verifyStage(HOUSE_STAGE, houseChecks),
 ].every(Boolean);
 if (!ok) {
   console.error('\n✗ 検算エラーあり');

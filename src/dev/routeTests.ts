@@ -90,7 +90,15 @@ class Bot {
     }
     this.g.input.releaseJump();
     this.release();
-    this.wait(0.15);
+    // 着地して落ち着くまで待つ（次の跳躍を空中で始めないため）
+    let settled = 0;
+    let t2 = 0;
+    while (t2 < 1.0 && settled < 6) {
+      this.step();
+      t2 += DT;
+      settled = this.g.cat.grounded ? settled + 1 : 0;
+    }
+    this.wait(0.1);
   }
 
   /** 目の前の登れる面に体を押し当てて登り切る（爪は使わない） */
@@ -129,7 +137,8 @@ function beyondFence(b: Bot): boolean {
 export function runRouteTests(game: Game): string {
   const g = game.debug;
   if (g.stage.id === 'factory') return runFactoryTest(game);
-  if (g.stage.id !== 'forest') return '森か工場のステージで実行してください';
+  if (g.stage.id === 'house') return runHouseTest(game);
+  if (g.stage.id !== 'forest') return '森・工場・家のステージで実行してください';
   const s = g.stage.start;
   const results: string[] = [];
 
@@ -266,6 +275,61 @@ function runFactoryTest(game: Game): string {
   bot.goto(-6.0, -18.95, 0.08, 4); bot.claw(); bot.note('キーボードに爪');
     const cleared = g.cat.isResting;
     results.push(`工場ルート${route}：${cleared ? '✓ クリア' : '✗ 届かなかった'}` + nl + '  ' + bot.log.join(nl + '  '));
+  }
+  const report = results.join(nl);
+  console.log(report);
+  return report;
+}
+
+/**
+ * 家ステージの通しテスト。
+ * A：網戸のすき間 → リビングの本棚 → 2階 → 手すり → 梁 → 猫ベッド
+ * B：網戸のすき間 → 吹き抜けのカーテン → 出窓の棚 → 2階 → 2階の本棚 → 南北の梁 → 猫ベッド
+ */
+function runHouseTest(game: Game): string {
+  const g = game.debug;
+  const results: string[] = [];
+  const nl = String.fromCharCode(10);
+
+  for (const route of ['A', 'B'] as const) {
+    const goalItem = g.interactions.all.find((o) => o.kind === 'goal') as { reset?: () => void } | undefined;
+    goalItem?.reset?.();
+    const s = g.stage.start;
+    const bot = new Bot(g);
+    bot.start(s.x, s.y, s.z, s.facing);
+
+    // 庭 → 網戸のすき間（x −3.3〜−3.0）をくぐって家の中へ
+    bot.goto(-3.15, 8.2, 0.2, 8); bot.note('窓の前');
+    bot.jumpToward(-3.15, 7.3); bot.note('サッシ(0.15)に乗る');
+    bot.goto(-3.15, 6.6, 0.15, 5); bot.note('すき間をくぐってリビングへ');
+
+    if (route === 'A') {
+      // リビングの本棚を登って2階の床（南）へ
+      bot.goto(-6.7, -4.75, 0.2, 10); bot.note('飾り棚の北がわ');
+      bot.jumpToward(-6.7, -3.95); bot.note('飾り棚の段1(0.6)');
+      bot.jumpToward(-6.7, -3.15); bot.note('飾り棚の段2(1.2)');
+      bot.jumpToward(-6.7, -2.35); bot.note('飾り棚の段3(1.8)');
+      bot.jumpToward(-6.7, -1.55); bot.note('飾り棚の段4(2.4)');
+      bot.goto(-6.7, -1.72, 0.06, 3); bot.jumpToward(-6.7, -0.6); bot.note('2階の床（南）(3.0)');
+    } else {
+      // 吹き抜けの高窓のカーテンを登って出窓の棚へ
+      bot.goto(-7.5, -3.5, 0.25, 10); bot.note('カーテンの前');
+      const climbed = bot.climb(); bot.note(`カーテンを登る(${climbed ? '登り切り' : '失敗'})`);
+      bot.goto(-7.85, -2.8, 0.2, 5); bot.note('出窓の棚(3.0)');
+      bot.jumpToward(-7.6, -1.5); bot.note('2階の床（西・南）へ跳ぶ');
+      bot.goto(-6.6, -0.6, 0.25, 6); bot.note('2階の床（南）');
+    }
+
+    // 2階 → 手すり → 梁 → 猫ベッド
+    bot.goto(-6.7, -0.4, 0.2, 5); bot.goto(-3.0, -0.5, 0.25, 8); bot.goto(-1.5, -0.6, 0.25, 6);
+    bot.note('吹き抜けの東がわへ回る');
+    bot.goto(-1.55, -2.3, 0.2, 6); bot.note('手すりの横');
+    bot.jumpToward(-1.92, -2.3); bot.note('手すり（東）(3.8)');
+    bot.goto(-1.92, -4.3, 0.2, 6); bot.note('手すりを北へ');
+    bot.jumpToward(-1.92, -3.5); bot.note('梁(4.4)へ跳ぶ');
+    bot.goto(-2.9, -3.5, 0.12, 5); bot.claw(); bot.note('猫ベッドに爪');
+    const cleared = g.cat.isResting;
+    results.push(`家ルート${route}：${cleared ? '✓ クリア' : '✗ 届かなかった'}` + nl + '  ' + bot.log.join(nl + '  '));
   }
   const report = results.join(nl);
   console.log(report);

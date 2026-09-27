@@ -25,9 +25,12 @@ export class Goal implements Interactable {
     private readonly onGoal: () => void,
   ) {
     this.name = def.name;
-    const keyboard = (def.look ?? 'cardboard') === 'keyboard';
+    const look = def.look ?? 'cardboard';
+    const keyboard = look === 'keyboard';
     const base = def.baseY ?? 0;
-    const body = new THREE.MeshLambertMaterial({ color: keyboard ? 0x3a3f46 : 0xc9a26b });
+    const body = new THREE.MeshLambertMaterial({
+      color: keyboard ? 0x3a3f46 : look === 'bed' ? 0xd8a8b8 : 0xc9a26b,
+    });
     const colliders: RAPIER.Collider[] = [];
     for (const p of goalParts(def)) {
       const cy = p.top - p.h / 2;
@@ -37,6 +40,19 @@ export class Goal implements Interactable {
       scene.add(mesh);
     }
     this.colliders = colliders;
+
+    if (look === 'bed') {
+      // ふちの丸いクッション（見た目だけ）
+      const rim = new THREE.Mesh(
+        new THREE.TorusGeometry(Math.min(def.w, def.d) / 2, def.height * 0.55, 8, 16),
+        new THREE.MeshLambertMaterial({ color: 0xc08fa4 }),
+      );
+      rim.position.set(def.x, base + def.height, def.z);
+      rim.rotation.x = Math.PI / 2;
+      rim.scale.set(def.w / Math.min(def.w, def.d), 1, def.d / Math.min(def.w, def.d));
+      scene.add(rim);
+      return;
+    }
 
     if (keyboard) {
       // キーの面（見た目だけ）：本体の上に薄く重ねる
@@ -77,7 +93,8 @@ export class Goal implements Interactable {
     this.cleared = true;
     // 体を X 方向（物の長い方）に向けて丸くなる。段ボールは中の底の上、キーボードはその上
     const base = this.def.baseY ?? 0;
-    const floor = (this.def.look ?? 'cardboard') === 'keyboard' ? base + this.def.height : base + this.def.wall;
+    const kind = this.def.look ?? 'cardboard';
+    const floor = kind === 'cardboard' ? base + this.def.wall : base + this.def.height;
     const center = new THREE.Vector3(this.def.x, floor + CAT_SHAPE.height / 2 + CAT_SHAPE.offset, this.def.z);
     cat.rest(center, Math.PI / 2);
     this.onGoal();
