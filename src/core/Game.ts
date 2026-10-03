@@ -14,6 +14,7 @@ import { OrientationOverlay } from '../ui/OrientationOverlay';
 import { buildStage } from '../stages/buildStage';
 import type { StageDef } from '../stages/stageTypes';
 import { ClearOverlay } from '../ui/ClearOverlay';
+import { PauseMenu } from '../ui/PauseMenu';
 import { markCleared } from './progress';
 import { nextStage } from '../stages';
 import { InteractionSystem } from '../interact/InteractionSystem';
@@ -53,6 +54,7 @@ export class Game {
   private readonly interactions: InteractionSystem;
   private readonly scratches: ScratchMarks;
   private readonly clearOverlay: ClearOverlay;
+  private readonly pauseMenu: PauseMenu;
   private readonly startPosition: { x: number; y: number; z: number };
   private readonly skipHint: HTMLDivElement | null;
   private skipHandlers: (() => void) | null;
@@ -93,10 +95,12 @@ export class Game {
     this.scratches = new ScratchMarks(this.scene);
     this.interactions = new InteractionSystem(this.physics.world, this.cat, this.scratches);
     const next = nextStage(stage.id);
+    const retry = () => location.reload();
+    const toStageSelect = () => { location.href = location.pathname; };
     this.clearOverlay = new ClearOverlay(document.body, stage.name, {
-      onRetry: () => location.reload(),
-      onSelect: () => { location.href = location.pathname; },
-      ...(next ? { onNext: { label: `次へ：${next.label.replace(/^d+.s*/, '')}`, run: () => { location.href = `${location.pathname}?stage=${next.id}`; } } } : {}),
+      onRetry: retry,
+      onSelect: toStageSelect,
+      ...(next ? { onNext: { label: `次へ：${next.label.replace(/^\d+\.\s*/, '')}`, run: () => { location.href = `${location.pathname}?stage=${next.id}`; } } } : {}),
     });
     const ctx = { physics: this.physics, scene: this.scene, stage, onGoal: () => this.onGoal() };
     for (const def of stage.interactables) {
@@ -122,6 +126,17 @@ export class Game {
     this.lockHint.textContent = 'クリックで操作開始（WASD 移動 / マウス 視点 / Space ジャンプ / Esc 解除）';
     document.body.appendChild(this.lockHint);
 
+    // 一時停止メニュー（右上のボタン、または P キー）
+    this.pauseMenu = new PauseMenu(document.body, {
+      onResume: () => this.setPaused(false),
+      onRetry: retry,
+      onSelect: toStageSelect,
+    });
+    window.addEventListener('keydown', (e) => {
+      if (e.code !== 'KeyP' || this.cleared || this.rig.mode === 'intro') return;
+      this.setPaused(!this.pauseMenu.isOpen);
+    });
+
     // --- 導入演出（ゴールを見せてから猫へ寄る。触ると飛ばせる） ---
     const goal = stage.interactables.find((d) => d.kind === 'goal');
     if (goal && goal.kind === 'goal') {
@@ -136,6 +151,7 @@ export class Game {
       this.skipHandlers = skip;
       window.addEventListener('pointerdown', skip);
       window.addEventListener('keydown', skip);
+      this.pauseMenu.setAvailable(false); // 演出中は一時停止ボタンを出さない
     } else {
       this.skipHint = null;
       this.skipHandlers = null;
@@ -168,6 +184,12 @@ export class Game {
     // タブ復帰直後などの大きな間隔は切り詰める
     const dt = Math.min((now - this.lastTime) / 1000, 0.1);
     this.lastTime = now;
+
+    // 一時停止中は物理も入力も止め、最後の画を出し続ける
+    if (this.pauseMenu.isOpen) {
+      this.renderer.render(this.scene, this.rig.camera);
+      return;
+    }
 
     this.keyboardMouse.update();
     const intro = this.rig.mode === 'intro';
@@ -220,9 +242,28 @@ export class Game {
     }
   }
 
+  /**
+   * 一時停止の切り替え。
+   * 止めている間に押しっぱなしだったキーは捨てる（再開した瞬間に猫が走り出さないように）。
+   */
+  private setPaused(paused: boolean): void {
+    if (this.cleared) return;
+    this.pauseMenu.setOpen(paused);
+    this.touchControls.layer.classList.toggle('paused', paused);
+    this.input.reset();
+    if (paused) {
+      if (document.pointerLockElement) document.exitPointerLock();
+    } else {
+      // 止まっていた分の時間を物理に流し込まない
+      this.lastTime = performance.now();
+      this.accumulator = 0;
+    }
+  }
+
   /** 導入演出を終える（飛ばした・最後まで再生した） */
   private endIntro(): void {
     this.rig.skipIntro();
+    this.pauseMenu.setAvailable(true);
     this.skipHint?.classList.add('hidden');
     this.lockHint.classList.toggle('hidden',
       this.touchControls.visible || this.keyboardMouse.isLocked || this.cleared);
@@ -237,6 +278,7 @@ export class Game {
   private onGoal(): void {
     this.cleared = true;
     markCleared(this.stage.id);
+    this.pauseMenu.setAvailable(false);
     this.catView.setResting(true);
     window.setTimeout(() => {
       this.clearOverlay.show();
@@ -247,7 +289,9 @@ export class Game {
 
   private setTouchMode(enabled: boolean): void {
     this.touchControls.setVisible(enabled);
-    this.lockHint.classList.toggle('hidden', enabled || this.keyboardMouse.isLocked);
+    // 導入演出の間は出さない（「演出を飛ばす」の案内と同じ位置に重なってしまう）
+    this.lockHint.classList.toggle('hidden',
+      enabled || this.keyboardMouse.isLocked || this.cleared || this.rig.mode === 'intro');
   }
 
   private applyPixelRatio(): void {

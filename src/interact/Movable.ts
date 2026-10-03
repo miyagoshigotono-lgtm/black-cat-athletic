@@ -78,6 +78,20 @@ export class Movable implements Interactable {
     this.mesh.position.copy(this.current);
   }
 
+  /**
+   * 元の位置に戻す（開発時のルート自動テスト用）。
+   * 1回の読み込みで複数のルートを続けて走らせるとき、前のルートで開けたままだと
+   * 次のルートの爪が「閉じる」側に働いてしまうため、ルートごとにここから戻す。
+   */
+  reset(): void {
+    this.goal = null;
+    this.atHome = true;
+    this.current.copy(this.home);
+    this.body.setNextKinematicTranslation(this.home);
+    this.body.setTranslation(this.home, true);
+    this.mesh.position.copy(this.home);
+  }
+
   /** 猫が台車の上に乗っているか（上面の少し上に体があるか） */
   private catIsOn(cat: CatController): boolean {
     const c = cat.getInterpolatedCenter(1, new THREE.Vector3());

@@ -18,7 +18,7 @@
  * 登れる面・ゴールの段ボール・ご飯皿も、動かない箱として 1〜5 に含める（当たり判定の無い登れる範囲は除く）。
  */
 import { CAT_WIDTH, CAT_HEIGHT, CAT_LENGTH } from '../src/greybox/protoCourseData.ts';
-import { catParams } from '../src/player/CatParams.ts';
+import { catParams, CAT_SHAPE } from '../src/player/CatParams.ts';
 import { PROTO_STAGE } from '../src/greybox/protoStage.ts';
 import { FOREST_STAGE } from '../src/stages/forest/forestData.ts';
 import { FACTORY_STAGE } from '../src/stages/factory/factoryData.ts';
@@ -34,6 +34,8 @@ const EPS = 1e-6;
 const JUMP_HEIGHT = catParams.jumpHeight;
 const GRAVITY = catParams.gravity;
 const MOVE_SPEED = catParams.moveSpeed;
+/** 段差を乗り上げられる高さ。跳んだ頂点からさらにこれだけ上に乗れる */
+const AUTOSTEP = CAT_SHAPE.autostepHeight;
 
 interface Aabb {
   minX: number; maxX: number; minY: number; maxY: number; minZ: number; maxZ: number;
@@ -767,6 +769,15 @@ function factoryChecks({ stage, byName, errors, infos }: Ctx): void {
   // 落ちても詰まないこと（屋外へ落ちたら、シャッターの下から工場へ戻れる）
   if (!route.has('工場の床')) errors.push('シャッターの下から工場へ入れない');
 
+  // 窓台を跳び外して配管ラックに落ちたとき、短く戻れること（SPEC 7「戻る距離を長くしない」）
+  const fromRack = reachability(stage, setup, '配管ラック', climbEdges);
+  const back = moves(fromRack, '窓台');
+  if (back === undefined) errors.push('配管ラックに落ちると窓台へ戻れない（受け止めの意味が無い）');
+  else {
+    infos.push(`配管ラック（天端 ${fmt(byName('配管ラック').maxY)}）から窓台まで ${back} 回の移動で戻れる`);
+    if (back > 2) errors.push(`配管ラックから窓台へ戻るのに ${back} 回かかる（受け止めの位置が遠い）`);
+  }
+
   // 天窓の穴：猫が通れる広さか
   const north = byName('工場の屋根（天窓の北）');
   const south = byName('工場の屋根（天窓の南）');
@@ -796,7 +807,7 @@ function houseChecks({ stage, byName, errors, infos }: Ctx): void {
   };
   // 登れる面・ギミックのつながり
   const climbEdges: Array<[string, string]> = [
-    ['1階の床', '2階の床（南）'],        // 麻ひもの柱を登る
+    ['1階の床', '2階の床（北）'],        // 麻ひもの柱を登る（吹き抜けの北のふち）
     ['2階の床（北）', 'タンス'],         // 引き出しを開けて段にし、タンスの上へ
     ['1階の床', '階段1段目'],           // 階段室のドアを開ける
   ];
@@ -808,8 +819,10 @@ function houseChecks({ stage, byName, errors, infos }: Ctx): void {
   if (goal === undefined) errors.push('ゴール（猫ベッド）まで行けない');
   else {
     infos.push(`ゴールまで最短 ${goal} 回の移動：${route.get('猫ベッド・クッション')!.join(' → ')}`);
-    // 登り（麻ひもの柱など）は1回の移動として数えるので、家は少なめになる
-    if (goal < 4) errors.push(`ゴールへ ${goal} 回で行けてしまう（近道がある）`);
+    // 登り（麻ひもの柱など）は1回の移動として数える。
+    // 梁を手すりより高くして「タンスの引き出し」か「2階の本棚」を通らないと乗れなくしてあり、
+    // ここが 6 を下回ったら、手すりから直接ゴールへ跳べる近道が復活している
+    if (goal < 6) errors.push(`ゴールへ ${goal} 回で行けてしまう（近道がある）`);
   }
   if (!route.has('1階の床')) errors.push('網戸のすき間から家に入れない');
 
@@ -826,7 +839,14 @@ function houseChecks({ stage, byName, errors, infos }: Ctx): void {
   const east = byName('2階の床（東）');
   const north = byName('2階の床（北）');
   const south = byName('2階の床（南）');
-  infos.push(`吹き抜け：x ${fmt(west.maxX)}〜${fmt(east.minX)}、z ${fmt(north.maxZ)}〜${fmt(south.minZ)}、梁は 4.4`);
+  // 梁は手すりから1回で乗れない高さか（乗れてしまうとゴール直行の近道になる）
+  const beamTop = Math.max(...(stage.solids ?? []).filter((s) => s.kind === 'beam').map((s) => s.p1[1]));
+  const railTop = byName('手すり（東）').maxY;
+  const reach = railTop + JUMP_HEIGHT + AUTOSTEP;
+  infos.push(`梁の天端 ${fmt(beamTop)}（手すり ${fmt(railTop)} からの到達上限 ${fmt(reach)}）`);
+  if (beamTop <= reach) errors.push('手すりから梁へ直接跳べてしまう（ゴールへの近道）');
+
+  infos.push(`吹き抜け：x ${fmt(west.maxX)}〜${fmt(east.minX)}、z ${fmt(north.maxZ)}〜${fmt(south.minZ)}`);
   if (!(east.minX - west.maxX > 2 && south.minZ - north.maxZ > 2)) errors.push('吹き抜けが狭い');
 
   // ソファの下：猫がくぐれるか

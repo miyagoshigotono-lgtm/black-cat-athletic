@@ -173,6 +173,53 @@ boxes.push({ name: '小屋の屋根', x: -3.5, z: 5.5, w: 2.6, d: 2.4, top: 1.8,
 boxes.push(block('小屋の中の木箱', -4.2, 6.0, 0.6, 0.6, 0.5, 'cardboard'));
 
 // ---------------------------------------------------------------
+// 下草・切り株・工場の裏手の物（density pass）
+//
+// 見た目の密度を上げるためだけの物で、道には関わらせない。
+// どれも上面 1.4 以下にしてあり、塀（2.4）の近くにも置いていないので、
+// これを足がかりにした近道はできない（検算が最短手数と樹冠への到達を見張っている）。
+// ---------------------------------------------------------------
+
+/** 切り株（低い円柱） */
+function stump(name: string, x: number, z: number, r: number, top: number): void {
+  solids.push({ kind: 'cylinder', name, x, z, r, bottom: 0, top, color: 'bark' });
+}
+
+/** 地面に生えた下草・落ち葉の塊 */
+function undergrowth(name: string, x: number, z: number, r: number, ry: number, color: BoxColor = 'leaves'): void {
+  solids.push({ kind: 'clump', name, x, y: ry, z, r, ry, bottomRatio: 1.0, color });
+}
+
+stump('切り株A', -5.4, 3.3, 0.38, 0.45);
+stump('切り株B', 5.5, -1.9, 0.34, 0.38);
+stump('切り株C', -1.3, -2.3, 0.36, 0.42);
+stump('切り株D', 2.2, -8.2, 0.4, 0.5); // 塀の向こう（ゴール側）
+
+for (const [i, [x, z, r, ry]] of ([
+  [-5.3, 5.0, 0.5, 0.22], [0.8, 4.2, 0.55, 0.24], [3.4, 2.6, 0.5, 0.2],
+  [-3.3, 1.2, 0.55, 0.22], [1.6, -2.6, 0.5, 0.2], [-2.3, -0.9, 0.5, 0.24],
+  [5.2, 3.4, 0.55, 0.22],
+  // 塀の向こう（ゴールまでの道のり）
+  [-2.0, -7.2, 0.55, 0.22], [2.4, -7.4, 0.5, 0.2], [-4.2, -11.0, 0.55, 0.24],
+  [1.0, -12.2, 0.5, 0.2], [-2.8, -10.0, 0.5, 0.22],
+] as const).entries()) {
+  undergrowth(`下草${i + 1}`, x, z, r, ry);
+}
+undergrowth('落ち葉の山1', -0.6, 1.0, 0.8, 0.12, 'bark');
+// 塀を越えた猫の着地点（ルートA 付近 x −2、B 付近 x 3.3、C 付近 x −4.7）を避けて置く
+undergrowth('落ち葉の山2', 0.6, -7.8, 0.7, 0.12, 'bark');
+
+// 工場の裏手（壁ぎわ）に置かれた物。「工場の裏の森」であることを見せる
+boxes.push(block('積んだ木材', -0.8, 6.9, 1.8, 0.7, 0.5, 'boards'));
+solids.push({ kind: 'cylinder', name: 'ドラム缶1', x: 1.3, z: 6.9, r: 0.3, bottom: 0, top: 0.9, color: 'metal' });
+solids.push({ kind: 'cylinder', name: 'ドラム缶2', x: 2.0, z: 6.9, r: 0.3, bottom: 0, top: 0.9, color: 'metal' });
+undergrowth('古いタイヤ', 3.3, 6.8, 0.45, 0.16, 'bark');
+boxes.push(block('配電盤', 5.0, 7.2, 0.8, 0.35, 1.4, 'metal'));
+// 物置小屋のまわり
+solids.push({ kind: 'cylinder', name: '植木鉢', x: -1.8, z: 6.2, r: 0.22, bottom: 0, top: 0.35, color: 'boards' });
+boxes.push(block('じょうろ', -5.3, 6.0, 0.3, 0.25, 0.3, 'metal'));
+
+// ---------------------------------------------------------------
 // 爪の対象
 // ---------------------------------------------------------------
 const interactables: InteractableDef[] = [

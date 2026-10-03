@@ -72,6 +72,18 @@ export class InputState {
     return v;
   }
 
+  /** 押しっぱなしの状態をすべて捨てる（一時停止の前後など、入力を見ていない間の取りこぼし対策） */
+  reset(): void {
+    this.moveX = 0;
+    this.moveY = 0;
+    this.lookYaw = 0;
+    this.lookPitch = 0;
+    this.jumpHeld = false;
+    this.clawHeld = false;
+    this.jumpQueued = false;
+    this.clawQueued = false;
+  }
+
   /** 視点回転量を取り出して消す */
   consumeLook(): { yaw: number; pitch: number } {
     const v = { yaw: this.lookYaw, pitch: this.lookPitch };

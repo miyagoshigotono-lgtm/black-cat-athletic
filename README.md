@@ -19,7 +19,8 @@ npm run verify:course  # 全ステージの寸法・高さ・接地・ルート�
 npm run build          # 型チェック＋本番ビルド（dist/）
 ```
 
-開発サーバーでステージを開き、ブラウザのコンソールで `runRouteTests()` を実行すると、自動操作で通して結果を表示する（開発時のみ）。森は3つのルート、工場は通し1本。
+開発サーバーでステージを開き、ブラウザのコンソールで `runRouteTests()` を実行すると、自動操作で通して結果を表示する（開発時のみ）。森3本・工場2本・家2本の計7本。
+一度の読み込みで通るのは1回だけ（ギミックの状態が残るため、2回目は再読み込みしてから実行する）。
 
 - PC：画面をクリックで操作開始（WASD 移動 / マウス 視点 / Space ジャンプ / Shift 爪 / Esc 解除）
 - スマホ：左側をなぞって移動、右側をスワイプで視点、右下のボタンでジャンプ・爪
@@ -31,6 +32,8 @@ npm run build          # 型チェック＋本番ビルド（dist/）
   - 登れる物（押し当てて登る）：ツタ・金網・点検はしご・荷崩れ防止ネット・立てかけた木パレット・麻ひもの柱
   - ギミック（可逆）：ドアの開閉、スイッチで動くコンベア、押せる台車、タンスの引き出し
   - ステージの最初にゴールを見せる演出が入る（画面を触る・クリック・キーで飛ばせる）
+  - 画面右上のボタン（または P キー）で一時停止。「続ける」「最初から」「ステージ選択」が選べる
+  - クリアすると「次へ」で次のステージへ進める。クリア済みはこの端末に記録され、ステージ選択に出る
   - 検証コース：開始地点から後ろ側に、自立した金網・金網付きの登り台（高さ 2m）・ドア付きの小部屋がある
 - 猫の速さ・ジャンプなどの値は決まったので、調整パネルは廃止した（値は src/player/CatParams.ts）
 - 45°より急な面には立てない（岩の丸い側面は滑り落ちる）。低い段差は歩いて乗り越える
@@ -57,7 +60,7 @@ src/
 ├─ player/   CatController（キネマティック・キャラクターコントローラー）、CatView、CatParams（調整値）
 ├─ camera/   PlayCamera（三人称・めり込み対策）、IntroCamera（導入演出）、CameraRig（切り替え）
 ├─ input/    InputState（共通入力）、KeyboardMouseInput、TouchInput
-├─ ui/       TouchControls、OrientationOverlay、StageSelect、ClearOverlay、DebugHud（?debug=1 のときだけ）
+├─ ui/       TouchControls、OrientationOverlay、StageSelect、ClearOverlay、PauseMenu、DebugHud（?debug=1 のときだけ）
 ├─ interact/ 爪の仕組み（InteractionSystem、爪痕、対象：Climbable・Door・Goal・Dish・Switch・Conveyor・Movable、registry）
 ├─ stages/   ステージの型・形の計算（geometry）・組み立て・選択、forest/・factory/・house/（配置データ）
 ├─ dev/      開発時だけ使う道具（ルートの自動テスト）

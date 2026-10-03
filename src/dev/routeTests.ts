@@ -151,6 +151,18 @@ class Bot {
     return false;
   }
 
+  /**
+   * その場で目標の方へ向き直る。
+   * 爪は鼻先の前に当たるので、引き出しのように「隣に立って横を向いて使う物」は
+   * 歩いて行っただけでは向きがそろわない。CatController と同じ式で facing を決める。
+   */
+  face(x: number, z: number): void {
+    const p = this.pos;
+    this.g.cat.facing = Math.atan2(-(x - p.x), -(z - p.z));
+    this.release();
+    this.step();
+  }
+
   claw(): void {
     this.g.input.pressClaw();
     this.step();
@@ -330,8 +342,9 @@ function runHouseTest(game: Game): string {
   const nl = String.fromCharCode(10);
 
   for (const route of ['A', 'B'] as const) {
-    const goalItem = g.interactions.all.find((o) => o.kind === 'goal') as { reset?: () => void } | undefined;
-    goalItem?.reset?.();
+    // ゴールも引き出しも、前のルートの結果を持ち越すと次のルートが別物になる
+    // （開いたままの引き出しに爪を当てると閉じてしまう）。ルートごとに元へ戻す
+    for (const item of g.interactions.all) (item as { reset?: () => void }).reset?.();
     const s = g.stage.start;
     const bot = new Bot(g);
     bot.start(s.x, s.y, s.z, s.facing);
@@ -342,7 +355,7 @@ function runHouseTest(game: Game): string {
     bot.goto(-3.15, 6.6, 0.15, 5); bot.note('すき間をくぐってリビングへ');
 
     if (route === 'A') {
-      // リビングの本棚を登って2階の床（南）へ
+      // 吹き抜けの飾り棚を5段のぼって 2階の床（南）へ
       bot.goto(-6.9, 5.0, 0.25, 8); bot.goto(-6.9, 0.5, 0.25, 8); bot.goto(-6.75, -5.62, 0.07, 12);
       bot.note('飾り棚の北がわ');
       bot.jumpToward(-6.7, -4.7, 3, 'stand'); bot.note('飾り棚の段1(0.6)');
@@ -351,21 +364,42 @@ function runHouseTest(game: Game): string {
       bot.jumpToward(-6.7, -2.45, 3, 'stand'); bot.note('飾り棚の段4(2.04)');
       bot.jumpToward(-6.7, -1.7, 3, 'stand'); bot.note('飾り棚の段5(2.52)');
       bot.jumpUntil(-6.7, -0.75, 2.9); bot.note('2階の床（南）(3.0)');
+      // 吹き抜けを東まわりにぐるっと回って、2階の床（北）へ
+      // 2階の本棚（x −5.3〜−4.7、z −0.75〜0.15）に当たらないよう、いったん南へ出てから東へ回る
+      bot.goto(-6.5, 0.6, 0.25, 8); bot.goto(-3.0, 0.6, 0.25, 10); bot.goto(-1.2, 0.0, 0.25, 8);
+      bot.note('本棚の南を回って吹き抜けの東がわへ');
+      bot.goto(-1.2, -6.0, 0.25, 12); bot.note('吹き抜けの東を北へ');
+      bot.goto(-3.3, -5.6, 0.2, 8); bot.note('2階の床（北）へ');
     } else {
-      // 吹き抜けの高窓のカーテンを登って出窓の棚へ
-      bot.goto(-5.9, -1.9, 0.25, 10); bot.note('麻ひもの柱の前');
-      const climbed = bot.climb(0, 1); bot.note(`柱を登る(${climbed ? '登り切り' : '失敗'})`);
-      bot.goto(-5.9, 0.3, 0.25, 6); bot.note('2階の床（南）');
+      // 吹き抜けの北のふちに立つ「麻ひもの柱」を登って 2階の床（北）へ
+      // ローテーブルの脚に挟まるので、西の壁ぎわを回ってから柱へ寄る
+      bot.goto(-6.9, 5.0, 0.25, 8); bot.goto(-6.9, 0.5, 0.25, 8); bot.goto(-5.5, -1.0, 0.25, 8);
+      bot.goto(-5.9, -4.1, 0.2, 8); bot.note('麻ひもの柱の前');
+      const climbed = bot.climb(); bot.note(`柱を登る(${climbed ? '登り切り' : '失敗'})`);
+      bot.goto(-5.9, -5.7, 0.25, 6); bot.note('2階の床（北）(3.0)');
+      bot.goto(-3.3, -5.6, 0.2, 8); bot.note('タンスの前へ');
     }
 
-    // 2階 → 手すり → 梁 → 猫ベッド
-    bot.goto(-6.6, 0.9, 0.25, 6); bot.goto(-3.0, 0.9, 0.25, 8); bot.goto(-1.5, -0.3, 0.25, 8);
-    bot.note('吹き抜けの東がわへ回る');
-    bot.goto(-1.15, -2.3, 0.2, 6); bot.note('手すりの横');
-    bot.jumpToward(-1.89, -2.3, 3, 'stand'); bot.note('手すり（東）(3.8)');
-    bot.goto(-1.89, -4.3, 0.15, 6); bot.note('手すりを北へ');
-    bot.jumpToward(-1.89, -3.5, 3, 'stand'); bot.note('梁(4.4)へ跳ぶ');
-    bot.goto(-2.9, -3.5, 0.12, 5); bot.claw(); bot.note('猫ベッドに爪');
+    // タンスの引き出しを爪で開け、段にして梁へ上がる
+    // タンスの南西に寄り、北を向いて引き出しに爪を当てる（引き出しは西へ出る）
+    bot.goto(-4.3, -5.9, 0.1, 6); bot.note('タンスの南西');
+    bot.face(-4.3, -6.5); bot.claw(); bot.note('引き出しを爪で開ける');
+    // 開いた引き出し（x −5.3〜−4.0、天端 3.6）のうち、タンスから出ている x −5.3〜−4.5 に乗る
+    bot.goto(-6.1, -6.5, 0.15, 6); bot.note('引き出しの西どなり（助走をとる）');
+    bot.jumpUntil(-4.9, -6.5, 3.5); bot.note('引き出し(3.6)に乗る');
+    // 引き出しの西の端まで下がってから、助走してタンスの上へ
+    bot.goto(-5.15, -6.5, 0.1, 4); bot.note('引き出しの西の端');
+    bot.jumpUntil(-4.2, -6.5, 4.2); bot.note('タンスの上(4.3)');
+    // タンスの上の箱（天端 4.75）を踏み台にして梁へ。直接跳ぶと +0.75 で梁の縁にしか乗れない
+    bot.goto(-4.15, -6.5, 0.1, 4);
+    bot.jumpUntil(-3.6, -6.5, 4.7, 3, 'stand'); bot.note('タンスの上の箱(4.75)');
+    // 箱の上なら頭が梁の下面(4.83)より高いので、ぶつからずに西へ跳び移れる
+    bot.jumpUntil(-4.58, -6.5, 4.95, 3, 'stand'); bot.note('梁（南北）(5.05)へ跳ぶ');
+    bot.goto(-4.58, -6.3, 0.08, 4); bot.note('梁の中心へ寄る');
+    // 幅 0.45 の梁の上を、中心線に沿って少しずつ南へ渡る
+    bot.goto(-4.58, -5.6, 0.1, 6); bot.goto(-4.58, -4.5, 0.1, 6); bot.goto(-4.55, -3.5, 0.1, 6);
+    bot.note('梁の十字へ');
+    bot.goto(-3.6, -3.5, 0.1, 6); bot.goto(-2.9, -3.5, 0.12, 6); bot.claw(); bot.note('猫ベッドに爪');
     const cleared = g.cat.isResting;
     results.push(`家ルート${route}：${cleared ? '✓ クリア' : '✗ 届かなかった'}` + nl + '  ' + bot.log.join(nl + '  '));
   }
