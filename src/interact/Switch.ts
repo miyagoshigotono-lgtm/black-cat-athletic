@@ -22,6 +22,7 @@ export class Switch implements Interactable {
   readonly colliders: readonly RAPIER.Collider[];
 
   private on: boolean;
+  private readonly initialOn: boolean;
   private readonly targetNames: readonly string[];
   private targets: Conveyor[] = [];
   private readonly lever: THREE.Mesh;
@@ -30,6 +31,7 @@ export class Switch implements Interactable {
   constructor(def: SwitchDef, physics: Physics, scene: THREE.Scene) {
     this.name = def.name;
     this.on = def.on ?? false;
+    this.initialOn = this.on;
     this.targetNames = def.targets;
 
     const collider = physics.addStaticBox(
@@ -65,13 +67,26 @@ export class Switch implements Interactable {
   }
 
   onClaw(_hit: ClawHit, _cat: CatController): boolean {
-    this.on = !this.on;
-    this.leverMaterial.color.setHex(this.on ? COLOR_ON : COLOR_OFF);
-    this.lever.rotation.x = this.on ? -0.4 : 0.4;
+    this.setOn(!this.on);
+    return false;
+  }
+
+  /**
+   * 切った状態へ戻す（開発時のルート自動テスト用）。
+   * 1回の読み込みで複数のルートを続けて走らせるとき、前のルートで入れたままだと
+   * 次のルートの爪が「切る」側に働いてしまう。
+   */
+  reset(): void {
+    this.setOn(this.initialOn);
+  }
+
+  private setOn(on: boolean): void {
+    this.on = on;
+    this.leverMaterial.color.setHex(on ? COLOR_ON : COLOR_OFF);
+    this.lever.rotation.x = on ? -0.4 : 0.4;
     for (const t of this.targets) {
       // つながっている物の状態を、スイッチに合わせる
-      if (t.isRunning !== this.on) t.toggle();
+      if (t.isRunning !== on) t.toggle();
     }
-    return false;
   }
 }

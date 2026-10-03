@@ -10,7 +10,7 @@ const JOYSTICK_DEAD_ZONE = 0.12;
  * スマホ用入力。
  * - 画面左側：触れた位置を中心にした仮想ジョイスティックで移動
  * - 画面右側：スワイプで視点
- * - ボタン：ジャンプ、爪
+ * - ボタン：ジャンプ、爪、走る
  * 複数の指を pointerId ごとに役割分担して扱う。
  */
 export class TouchInput {
@@ -35,6 +35,7 @@ export class TouchInput {
 
     this.bindButton(ui.jumpButton, () => input.pressJump(), () => input.releaseJump());
     this.bindButton(ui.clawButton, () => input.pressClaw(), () => input.releaseClaw());
+    this.bindButton(ui.runButton, () => { input.runHeld = true; }, () => { input.runHeld = false; });
 
     // iOS Safari のピンチ操作による拡大を止める
     document.addEventListener('gesturestart', (e) => e.preventDefault());

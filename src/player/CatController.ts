@@ -152,8 +152,10 @@ export class CatController {
     }
     const inputLen = Math.min(1, dir.length());
     if (inputLen > 1e-4) dir.normalize();
-    const targetVx = dir.x * p.moveSpeed * inputLen;
-    const targetVz = dir.z * p.moveSpeed * inputLen;
+    // 走るボタンを押している間だけ速い（勢いはそのままジャンプの飛距離になる）
+    const speed = input.runHeld ? p.runSpeed : p.walkSpeed;
+    const targetVx = dir.x * speed * inputLen;
+    const targetVz = dir.z * speed * inputLen;
 
     // --- 水平速度を目標へ近づける（空中は効きを弱める） ---
     // 空中で入力が無いときは勢いを保つ（飛び降り・助走ジャンプの勢いが空中で止まらないように）

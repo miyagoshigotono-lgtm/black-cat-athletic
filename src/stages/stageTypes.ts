@@ -189,6 +189,8 @@ export interface DishDef {
   z: number;
   radius: number;
   height: number;
+  /** 置く面の高さ（省略すると地面 0）。崖の上など、地面以外に置くときに使う */
+  baseY?: number;
 }
 
 /**

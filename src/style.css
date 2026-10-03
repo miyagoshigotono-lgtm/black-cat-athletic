@@ -349,3 +349,12 @@ body {
 .touch-layer.paused {
   display: none;
 }
+
+/* 走るボタン：親指が届く所に、ジャンプの左どなり（爪の下）に置く */
+.touch-btn-run {
+  width: 64px;
+  height: 64px;
+  right: calc(env(safe-area-inset-right) + 104px);
+  bottom: calc(env(safe-area-inset-bottom) + 118px);
+  font-size: 14px;
+}

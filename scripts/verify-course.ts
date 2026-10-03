@@ -23,7 +23,7 @@ import { PROTO_STAGE } from '../src/greybox/protoStage.ts';
 import { FOREST_STAGE } from '../src/stages/forest/forestData.ts';
 import { FACTORY_STAGE } from '../src/stages/factory/factoryData.ts';
 import { HOUSE_STAGE } from '../src/stages/house/houseData.ts';
-import { goalParts, conveyorBeam, type BoxDef, type DoorDef, type StageDef, type SolidDef, type InteractableDef, type ClumpDef, type BeamDef, type CylinderDef } from '../src/stages/stageTypes.ts';
+import { goalParts, conveyorBeam, type BoxDef, type DoorDef, type StageDef, type SolidDef, type InteractableDef, type ClumpDef, type CylinderDef } from '../src/stages/stageTypes.ts';
 import { solidAabb, pointInSolid, beamFrame, beamCorners, beamOverlapsBox, clumpTopRadius, clumpSideSlopeDeg, type Vec3 } from '../src/stages/geometry.ts';
 
 /** 歩ける枝の傾きの上限 [度]（CatParams の滑り始める角度 30°） */
@@ -33,7 +33,12 @@ const EPS = 1e-6;
 /** 猫の能力（ゲーム本体と同じ値を CatParams から読む） */
 const JUMP_HEIGHT = catParams.jumpHeight;
 const GRAVITY = catParams.gravity;
-const MOVE_SPEED = catParams.moveSpeed;
+/**
+ * 跳べる・跳べないは「走っているとき」を基準に調べる。
+ * 歩き（1.0）でしか届かない所は作れるが、走り（3.0）で届いてしまう近道は見逃せないため、
+ * 猫にできる最大＝走りの速さで判定する。
+ */
+const MOVE_SPEED = catParams.runSpeed;
 /** 段差を乗り上げられる高さ。跳んだ頂点からさらにこれだけ上に乗れる */
 const AUTOSTEP = CAT_SHAPE.autostepHeight;
 
@@ -68,6 +73,17 @@ function allowedOverlap(stage: StageDef, a: string, b: string): boolean {
 }
 
 /** 箱として検算する物すべて（配置の箱＋登れる面＋ゴール＋皿＋スイッチ＋台車） */
+/**
+ * その点の真下に、ちょうどその高さの箱の上面があるか。
+ * 森の「台地」のように地面以外の面の上に岩や倒木を置くときの、接地判定に使う。
+ */
+function restsOnBox(stage: StageDef, x: number, z: number, y: number): boolean {
+  return allBoxes(stage).some((b) => {
+    const c = aabb(b);
+    return Math.abs(c.maxY - y) < 0.03 && x > c.minX && x < c.maxX && z > c.minZ && z < c.maxZ;
+  });
+}
+
 function allBoxes(stage: StageDef): BoxDef[] {
   const list: BoxDef[] = [...stage.boxes];
   for (const d of stage.interactables) {
@@ -78,7 +94,7 @@ function allBoxes(stage: StageDef): BoxDef[] {
       });
     }
     if (d.kind === 'goal') list.push(...goalParts(d));
-    if (d.kind === 'dish') list.push({ name: d.name, x: d.x, z: d.z, w: d.radius * 2, d: d.radius * 2, top: d.height, h: d.height, color: 'metal' });
+    if (d.kind === 'dish') list.push({ name: d.name, x: d.x, z: d.z, w: d.radius * 2, d: d.radius * 2, top: (d.baseY ?? 0) + d.height, h: d.height, color: 'metal' });
     if (d.kind === 'switch') list.push({ name: d.name, x: d.x, z: d.z, w: d.w, d: d.d, top: d.y + d.height / 2, h: d.height, color: 'metal', attachedTo: [] });
     if (d.kind === 'movable') list.push({ name: d.name, x: d.x, z: d.z, w: d.w, d: d.d, top: d.top, h: d.h, color: 'metal' });
   }
@@ -270,7 +286,7 @@ function checkSolids(stage: StageDef, boxes: BoxDef[], errors: string[], infos: 
         if (!onCylinder && !onBox) errors.push(`${s.name}: 底 ${s.bottom} を支える物が無い（宙に浮いている）`);
       }
     } else if (s.kind === 'clump') {
-      const onGround = Math.abs(s.y - s.ry) < 0.01;
+      const onGround = Math.abs(s.y - s.ry) < 0.01 || restsOnBox(stage, s.x, s.z, s.y - s.ry);
       const held = hosts.some((h) => {
         if (h.kind === 'cylinder') return pointInSolid([h.x, h.top, h.z], s);
         if (h.kind === 'beam') return pointInSolid(h.p1, s) || pointInSolid(h.p2, s);
@@ -281,7 +297,7 @@ function checkSolids(stage: StageDef, boxes: BoxDef[], errors: string[], infos: 
       // 傾いた枝：各端が地面に着く（上面の高さ = 厚み程度）か、支えの中にある
       const f = beamFrame(s);
       for (const [label, end] of [['始点', s.p1], ['終点', s.p2]] as Array<[string, Vec3]>) {
-        const onGround = end[1] - s.thickness < 0.02;
+        const onGround = end[1] - s.thickness < 0.02 || restsOnBox(stage, end[0], end[2], end[1] - s.thickness);
         const inHost = hosts.some((h) => pointInSolid(end, h, 0.03)) || inHostBox(end);
         if (!onGround && !inHost) {
           // 片持ち（片方の端だけ支えられた枝）は、もう片方の端が支えの中にあれば可
@@ -470,6 +486,12 @@ function arcBlocked(stage: StageDef, a: Vec3, b: Vec3, mode: 'jump' | 'walk' | '
   // 目的の高さまで下りてくる時刻（そこで着地する）
   const disc = v0 * v0 + 2 * GRAVITY * (a[1] - b[1]);
   const tLand = mode === 'walk' || disc < 0 ? tEnd : (v0 + Math.sqrt(disc)) / GRAVITY;
+  /**
+   * 跳ばずに落ちる場合、着地までに水平距離が足りなければ、そもそも b へは届かない。
+   * ここを「ぶつからなかった＝通れる」と答えてしまうと、
+   * 「落ち始めてすぐ着地する」短い道筋しか調べずに、その先にある塀をすり抜けたことになる。
+   */
+  if (mode === 'fall' && tLand + 1e-9 < tEnd) return true;
   const tMax = Math.max(tEnd, Math.min(tLand, tEnd + 2));
   const steps = Math.max(8, Math.ceil((dist + Math.abs(b[1] - a[1])) / 0.04));
   // 通り道の近くの箱だけを見る（毎回すべての箱を調べると遅い）
@@ -638,9 +660,10 @@ function forestChecks({ stage, byName, errors, infos }: Ctx): void {
     return s as Extract<SolidDef, { kind: K }>;
   };
   const fence = byName('板塀');
+  const plateau = byName('台地');
 
-  // --- ツタ（最初の爪の対象）---
-  const vine = stage.interactables.find((d) => d.kind === 'climbable');
+  // --- ツタ（最初の爪の対象。スタートの正面に必ず見える）---
+  const vine = stage.interactables.find((d) => d.kind === 'climbable' && d.name === 'ツタ');
   const t1 = get('①の木・幹', 'cylinder');
   if (vine && vine.kind === 'climbable') {
     const nose = stage.start.z - CAT_LENGTH / 2;
@@ -650,7 +673,7 @@ function forestChecks({ stage, byName, errors, infos }: Ctx): void {
     if (!(nose - face > 1.0 && nose - face < 3.0)) errors.push('ツタがスタートから遠すぎる／近すぎる');
   }
 
-  // --- 塀の上の葉 ---
+  // --- 塀の上の葉（ルートA の越え方）---
   const leaf = get('塀の上の葉', 'clump');
   const leafTop = leaf.y + leaf.ry;
   const leafFlat = clumpTopRadius(leaf);
@@ -659,52 +682,94 @@ function forestChecks({ stage, byName, errors, infos }: Ctx): void {
   if (!(Math.abs(leaf.z - (fence.minZ + fence.maxZ) / 2) < leafFlat - 0.2)) errors.push('塀の上の葉の平らな所が塀をまたいでいない');
 
   // --- ⑤の枝の先から塀を跳び越えられるか（歩いて落ちると塀に当たる＝跳ぶ必要がある）---
-  const b5 = get('⑤の枝', 'beam');
+  const b5 = get('⑤の枝（北）', 'beam');
   const v = Math.sqrt(2 * GRAVITY * JUMP_HEIGHT);
   const tFar = Math.abs(b5.p2[2] - fence.minZ) / MOVE_SPEED;
   const yJump = b5.p2[1] + v * tFar - 0.5 * GRAVITY * tFar * tFar;
-  const tNear = Math.abs(b5.p2[2] - fence.maxZ) / MOVE_SPEED;
-  const yWalk = b5.p2[1] - 0.5 * GRAVITY * tNear * tNear;
-  infos.push(`⑤の枝の先 → 塀：跳ぶと向こう面で底 ${fmt(yJump)}（塀 ${fmt(fence.maxY)}）、跳ばずに落ちると手前で ${fmt(yWalk)}`);
+  infos.push(`⑤の枝の先 → 塀：跳ぶと向こう面で底 ${fmt(yJump)}（塀 ${fmt(fence.maxY)}）`);
   if (!(yJump > fence.maxY + 0.1)) errors.push('⑤の枝の先から塀を跳び越えられない');
 
-  // --- 樹冠の上には乗れない（乗れると近道になる）---
-  const canopies = solids.filter((o): o is ClumpDef => o.kind === 'clump' && o.name.includes('樹冠'));
-  const canopyTop = Math.min(...canopies.map((c) => c.y + c.ry));
-  const perches: number[] = [leafTop, ...solids.filter((o): o is BeamDef => o.kind === 'beam').map((o) => Math.max(o.p1[1], o.p2[1]))];
-  const highest = Math.max(...perches);
-  infos.push(`樹冠の上面 ${fmt(canopyTop)}、いちばん高い足場 ${fmt(highest)}（跳んで上がれるのは +${JUMP_HEIGHT - 0.15}）`);
-  if (!(canopyTop > highest + JUMP_HEIGHT - 0.15)) errors.push('足場から樹冠の上に跳び乗れてしまう');
+  /**
+   * 岩づたいには塀を越えられないこと（第4版で廃止した道）。
+   * いちばん高い岩に乗って走って跳んでも、足が板塀の上面に届かない。
+   */
+  const rocks = solids.filter((o): o is ClumpDef => o.kind === 'clump' && o.name.includes('岩') && !o.name.includes('台地'));
+  const rockTop = Math.max(...rocks.map((r) => r.y + r.ry));
+  infos.push(`いちばん高い岩 ${fmt(rockTop)} ＋ 跳躍 ${JUMP_HEIGHT} = ${fmt(rockTop + JUMP_HEIGHT)}（板塀 ${fmt(fence.maxY)}）`);
+  if (rockTop + JUMP_HEIGHT >= fence.maxY) errors.push('岩に乗って跳ぶと塀に届いてしまう（岩の道は廃止したはず）');
 
   // --- どこからどこへ行けるか（地面から順にたどる）---
   const forestSetup: ReachSetup = {
+    // 手前の地面と、塀の向こうの沢を分ける（台地は別の箱なので自動的に別扱い）
     region: (_x, z) => (z > fence.maxZ ? '地面（手前）' : '地面（奥）'),
-    // 上面が高すぎる壁（茂み・工場）は足場にしない
-    skipBox: (b) => b.top > 3.5,
+    // 外周の茂みと工場の壁には立てない
+    skipBox: (b) => b.name.startsWith('茂み') || b.name === '工場の壁',
     // 塀を跳び越える着地点を細かく見るため、地面の点を 0.5m 刻みにする
     groundStep: 0.5,
   };
   const withVine = reachability(stage, forestSetup, '地面（手前）', [['地面（手前）', '①の木・幹']]);
-  const withoutVine = reachability(stage, forestSetup, '地面（手前）', []);
-  const key = ['①の木・幹', '②の木・幹', '③の木・幹', '塀の上の葉', '岩E', '④の枝', '⑤の枝', '塀ぎわの岩', '板塀', '地面（奥）'];
+  // ツタ無し（倒木のルート）。沢の登り返しだけは使える（詰み防止なので外せない）
+  const withoutVine = reachability(stage, forestSetup, '地面（手前）', [['地面（奥）', '登り返しの木の枝']]);
+  // 沢に落ちた猫が、登り返しのツタで林冠へ戻れるか
+  const fromRavine = reachability(stage, forestSetup, '地面（奥）', [['地面（奥）', '登り返しの木の枝']]);
+
+  const key = ['①の木・幹', '②の木・幹', '③の木・幹', '塀の上の葉', '④の枝（北）', '⑤の枝（北）', '⑦の枝（北）',
+    '地面（奥）', '登り返しの木の枝', '林冠の木P・樹冠', '林冠の木T・樹冠', '台地'];
   infos.push('到達できるまでの移動回数（ツタあり）：' + key.map((k) => `${k} ${moves(withVine, k) ?? '×'}`).join('、'));
+
   const cross = moves(withVine, '地面（奥）');
   if (cross === undefined) errors.push('塀の向こうへ行けない（ルートが成立していない）');
+  else infos.push(`塀の向こう（沢）まで最短 ${cross} 回の移動：${withVine.get('地面（奥）')!.join(' → ')}`);
+
+  const toPlateau = moves(withVine, '台地');
+  if (toPlateau === undefined) errors.push('崖の上（台地）へ行けない＝ゴールへ行けない');
   else {
-    infos.push(`塀の向こうまで最短 ${cross} 回の移動：${withVine.get('地面（奥）')!.join(' → ')}`);
-    if (cross < 4) errors.push(`塀の向こうへ ${cross} 回で行けてしまう（簡単すぎる。4回以上にする）`);
+    infos.push(`崖の上まで最短 ${toPlateau} 回の移動：${withVine.get('台地')!.join(' → ')}`);
+    if (toPlateau < 8) errors.push(`崖の上へ ${toPlateau} 回で行けてしまう（簡単すぎる。8回以上にする）`);
+    // 台地へは林冠を渡ってしか行けない（崖は 4.0 あって地面から跳んでも届かない）
+    if (!withVine.get('台地')!.some((n) => n.includes('樹冠'))) {
+      errors.push('林冠を通らずに崖の上へ行けてしまう：' + withVine.get('台地')!.join(' → '));
+    }
   }
-  // ルートA はツタが要る（ツタ無しでは③の木・塀の上の葉へ行けない）
-  if (withoutVine.has('塀の上の葉')) errors.push('ツタを使わずに塀の上の葉へ行けてしまう');
+  infos.push(`崖の高さ ${fmt(plateau.maxY)}（地面から跳んで上がれるのは ${JUMP_HEIGHT}）`);
+  if (plateau.maxY <= JUMP_HEIGHT + AUTOSTEP) errors.push('崖が低く、地面から跳んで台地に上がれてしまう');
+
+  /**
+   * ツタはいちばん短い道だが、唯一の道ではない（倒木から⑥へ上がる道が別にある）。
+   * ツタを見つけると手数が減る＝探す価値がある、という形にしてある。
+   */
   if (!withVine.has('塀の上の葉')) errors.push('ルートA（ツタ）が成立していない');
-  // ルートB・C はツタ無しでも成立する
-  if (!withoutVine.has('⑤の枝')) errors.push('ルートB（倒木）が成立していない');
-  if (!withoutVine.has('塀ぎわの岩')) errors.push('ルートC（岩）が成立していない');
+  const vineRoute = withVine.get('台地');
+  const noVineRoute = withoutVine.get('台地');
+  if (!noVineRoute) errors.push('ツタを使わないとゴールへ行けない（倒木のルートが途切れている）');
+  /**
+   * ツタの値打ちは手数ではなく「**沢に落ちずに済む**」こと。
+   * ③の細い枝 → 塀の上の葉 と渡ると、そのまま林冠へ入れる。
+   * ④・⑤・⑦から塀を跳び越えた猫は沢の地面に降りるので、登り返しのツタを探すことになる。
+   */
+  infos.push(`ツタのルートは沢に降りずに林冠へ入れる：${vineRoute?.includes('地面（奥）') ? '降りてしまう' : 'OK'}`
+    + `（倒木のルートは ${noVineRoute?.includes('地面（奥）') ? '沢を経由する' : '沢を通らない'}）`);
+  if (vineRoute?.includes('地面（奥）')) errors.push('ツタのルートでも沢に落ちてしまう（塀の上の葉から林冠へ直接入れていない）');
+  // 塀を越える所が4か所あること（③の葉／⑦／④／⑤）
+  for (const branch of ['⑦の枝（北）', '④の枝（北）', '⑤の枝（北）']) {
+    if (!withVine.has(branch)) errors.push(`${branch} へ行けない（塀を越える道が1つ減っている）`);
+  }
+  // ツタ無し（倒木の道）でも塀を越えられる
+  if (!withoutVine.has('⑤の枝（北）')) errors.push('倒木のルートが成立していない');
   if (!withoutVine.has('地面（奥）')) errors.push('ツタを使わないルートで塀を越えられない');
-  const onCanopy = [...withVine.keys()].filter((n) => n.includes('樹冠'));
-  if (onCanopy.length > 0) errors.push(`樹冠の上に乗れてしまう：${onCanopy.join('・')}`);
-  const reachedCount = withVine.size;
-  infos.push(`立てる場所のうち ${reachedCount} か所へ到達できる（行き止まりを含む）`);
+
+  /**
+   * 詰み防止：塀を跳び越えて沢の地面に落ちた猫が、登り返しのツタで林冠へ戻れること。
+   * 板塀は向こう側からも登れないので、ここが無いと沢に閉じ込められる。
+   */
+  if (!fromRavine.has('台地')) errors.push('沢に落ちると戻れない（登り返しのツタから林冠へ行けない）');
+  else infos.push(`沢に落ちても、登り返しのツタから ${moves(fromRavine, '台地')} 回で崖の上へ戻れる`);
+
+  // --- 樹冠（第4版から乗れる）---
+  const canopies = [...withVine.keys()].filter((n) => n.includes('樹冠'));
+  infos.push(`乗れる樹冠 ${canopies.length} か所（第4版から木のてっぺんに乗れる）`);
+  if (canopies.length < 7) errors.push('樹冠に乗れる所が少なすぎる（林冠ルートが成立していない）');
+  infos.push(`立てる場所のうち ${withVine.size} か所へ到達できる（行き止まりを含む）`);
 
   // --- ゴール ---
   const goal = stage.interactables.find((d) => d.kind === 'goal');
@@ -713,7 +778,7 @@ function forestChecks({ stage, byName, errors, infos }: Ctx): void {
     const id = goal.d - 2 * goal.wall;
     infos.push(`ゴール：段ボールの内寸 ${fmt(iw)} × ${fmt(id)}（猫 ${CAT_LENGTH} × ${CAT_WIDTH} が丸まって入る）`);
     if (!(iw > CAT_LENGTH + 0.02 && id > CAT_WIDTH + 0.02)) errors.push('段ボールに猫が入らない');
-    if (!(goal.z < fence.minZ)) errors.push('段ボールが塀の向こう側にない');
+    if (!(goal.z < plateau.maxZ)) errors.push('段ボールが崖の上に置かれていない');
   }
   void beamCorners;
   void ({} as CylinderDef);
@@ -738,11 +803,11 @@ function factoryChecks({ stage, byName, errors, infos }: Ctx): void {
   // 登れる面（押し当てて登る）は、跳ぶ以外のつながりとして渡す
   const climbEdges: Array<[string, string]> = [
     ['踏み台の木箱', '機械B'],          // 機械Bの金網
-    ['工場の床', '中2階の踊り場'],       // 点検はしご（東壁）
+    ['工場の床', '中2階の踊り場'],       // 点検はしご（東）
     ['工場の床', '木箱の山（ネット）'],   // 荷崩れ防止ネット
     ['工場の床', '機械A'],              // 立てかけた木パレット
     ['キャットウォーク', '鉄骨A'],       // 点検はしご（西壁）
-    ['工場の床', 'キャットウォーク'],     // スイッチを入れた急なコンベア
+    ['吊り荷（大）', 'ベルトの降り口'],   // スイッチを入れた急なコンベア（鉄骨A→鉄骨B の唯一の道）
     ['工場の床', '中2階の踊り場'],       // 押せる台車を動かして上がる
   ];
   const route = reachability(stage, setup, '屋外の地面', climbEdges);
@@ -757,7 +822,9 @@ function factoryChecks({ stage, byName, errors, infos }: Ctx): void {
   if (goal === undefined) errors.push('ゴール（キーボード）まで行けない');
   else {
     infos.push(`ゴールまで最短 ${goal} 回の移動：${route.get('キーボード・本体')!.join(' → ')}`);
-    if (goal < 10) errors.push(`ゴールへ ${goal} 回で行けてしまう（近道がある）`);
+    // 第2版（コンベアを道の途中に移し、吊り荷への跳び降りを足した）で 15 手。
+    // ここが 14 を下回ったら、どこかに登りを飛ばせる近道ができている
+    if (goal < 14) errors.push(`ゴールへ ${goal} 回で行けてしまう（近道がある）`);
   }
   // 事務所の窓へは、工場の中を登って屋根を通るしかないこと（外から直接登れない）
   const outside = reachability(stage, setup, '屋外の地面', climbEdges);
@@ -820,9 +887,13 @@ function houseChecks({ stage, byName, errors, infos }: Ctx): void {
   else {
     infos.push(`ゴールまで最短 ${goal} 回の移動：${route.get('猫ベッド・クッション')!.join(' → ')}`);
     // 登り（麻ひもの柱など）は1回の移動として数える。
-    // 梁を手すりより高くして「タンスの引き出し」か「2階の本棚」を通らないと乗れなくしてあり、
-    // ここが 6 を下回ったら、手すりから直接ゴールへ跳べる近道が復活している
-    if (goal < 6) errors.push(`ゴールへ ${goal} 回で行けてしまう（近道がある）`);
+    // 走り（3.0）を足したことで、梁（南北）からゴールへ一跳びで届くようになり 6 → 5 手になった。
+    // 道筋は変わっていない（必ずタンスの引き出しを通る）ので、下限を 5 に合わせる。
+    // ここが 5 を下回ったら、手すりから直接ゴールへ跳べる近道が復活している
+    if (goal < 5) errors.push(`ゴールへ ${goal} 回で行けてしまう（近道がある）`);
+    if (!route.get('猫ベッド・クッション')!.includes('タンス')) {
+      errors.push('引き出しを使わずにゴールへ行ける道ができている：' + route.get('猫ベッド・クッション')!.join(' → '));
+    }
   }
   if (!route.has('1階の床')) errors.push('網戸のすき間から家に入れない');
 

@@ -23,7 +23,8 @@ export class Dish implements Interactable {
 
   constructor(def: DishDef, physics: Physics, scene: THREE.Scene) {
     this.name = def.name;
-    const body = physics.world.createRigidBody(RAPIER.RigidBodyDesc.fixed().setTranslation(def.x, def.height / 2, def.z));
+    const base = def.baseY ?? 0;
+    const body = physics.world.createRigidBody(RAPIER.RigidBodyDesc.fixed().setTranslation(def.x, base + def.height / 2, def.z));
     this.colliders = [physics.world.createCollider(RAPIER.ColliderDesc.cylinder(def.height / 2, def.radius), body)];
 
     this.mesh = new THREE.Group();
@@ -39,7 +40,7 @@ export class Dish implements Interactable {
     );
     food.position.y = def.height + 0.002;
     this.mesh.add(dish, food);
-    this.mesh.position.set(def.x, 0, def.z);
+    this.mesh.position.set(def.x, base, def.z);
     scene.add(this.mesh);
   }
 

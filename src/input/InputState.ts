@@ -26,6 +26,8 @@ export class InputState {
   jumpHeld = false;
   /** 爪を押している（① では動作なし） */
   clawHeld = false;
+  /** 走るボタンを押している（押している間だけ速い） */
+  runHeld = false;
 
   /** 押した瞬間のイベント（物理ステップで消費するまで保持） */
   private jumpQueued = false;
@@ -80,6 +82,7 @@ export class InputState {
     this.lookPitch = 0;
     this.jumpHeld = false;
     this.clawHeld = false;
+    this.runHeld = false;
     this.jumpQueued = false;
     this.clawQueued = false;
   }

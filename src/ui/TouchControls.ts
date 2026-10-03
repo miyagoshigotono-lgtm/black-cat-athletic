@@ -1,7 +1,7 @@
 /**
  * スマホ用の画面内操作部品（見た目だけ）。
  * - 左側：仮想ジョイスティック（触れた位置に出る）
- * - 右下：ジャンプボタン、爪ボタン（爪は ① では配置のみ・動作なし）
+ * - 右下：ジャンプボタン、爪ボタン、走るボタン（押している間だけ速い）
  * 入力の処理は TouchInput が行う。
  */
 export class TouchControls {
@@ -9,6 +9,7 @@ export class TouchControls {
   readonly layer: HTMLDivElement;
   readonly jumpButton: HTMLButtonElement;
   readonly clawButton: HTMLButtonElement;
+  readonly runButton: HTMLButtonElement;
   /** ジョイスティックの可動半径 [px] */
   readonly joystickRadius = 56;
 
@@ -25,14 +26,16 @@ export class TouchControls {
     this.jumpButton.textContent = 'ジャンプ';
     this.clawButton = el('button', 'touch-btn touch-btn-claw');
     this.clawButton.textContent = '爪';
+    this.runButton = el('button', 'touch-btn touch-btn-run');
+    this.runButton.textContent = '走る';
 
-    for (const b of [this.jumpButton, this.clawButton]) {
+    for (const b of [this.jumpButton, this.clawButton, this.runButton]) {
       b.type = 'button';
       // 長押しメニューやフォーカス枠を出さない
       b.addEventListener('contextmenu', (e) => e.preventDefault());
     }
 
-    this.layer.append(this.joyBase, this.jumpButton, this.clawButton);
+    this.layer.append(this.joyBase, this.jumpButton, this.clawButton, this.runButton);
     parent.appendChild(this.layer);
     this.hideJoystick();
   }

@@ -1,7 +1,7 @@
 import { InputState, lookParams } from './InputState';
 
 /**
- * PC 用入力：WASD・Space・Shift とマウス視点（ポインターロック）。
+ * PC 用入力：WASD 移動・Space ジャンプ・Shift 走る・左クリック/E 爪、マウス視点（ポインターロック）。
  * iOS Safari はポインターロック非対応のため、タッチ入力（TouchInput）とは別系統にしている。
  */
 export class KeyboardMouseInput {
@@ -26,9 +26,20 @@ export class KeyboardMouseInput {
       if (!locked) this.releaseAll();
       this.onLockChange(locked);
     });
-    // マウスでクリックしたときだけポインターロックを要求する（タッチでは要求しない）
+    // マウスでクリックしたときだけポインターロックを要求する（タッチでは要求しない）。
+    // ロック後の左クリックは爪（いちばんよく使う動作なので、押しやすい所に置く）
     this.listen(canvas, 'pointerdown', (e) => {
-      if ((e as PointerEvent).pointerType === 'mouse' && !this.isLocked) this.requestLock();
+      const p = e as PointerEvent;
+      if (p.pointerType !== 'mouse') return;
+      if (!this.isLocked) {
+        this.requestLock();
+      } else if (p.button === 0) {
+        this.input.pressClaw();
+      }
+    });
+    this.listen(window, 'pointerup', (e) => {
+      const p = e as PointerEvent;
+      if (p.pointerType === 'mouse' && p.button === 0) this.input.releaseClaw();
     });
   }
 
@@ -83,13 +94,16 @@ export class KeyboardMouseInput {
       this.input.pressJump();
       e.preventDefault();
     }
-    if (e.code === 'ShiftLeft' || e.code === 'ShiftRight') this.input.pressClaw();
+    // 走る＝Shift（押している間）。Ctrl・Alt はブラウザのショートカットとぶつかるので使わない
+    if (e.code === 'ShiftLeft' || e.code === 'ShiftRight') this.input.runHeld = true;
+    if (e.code === 'KeyE') this.input.pressClaw();
   }
 
   private onKeyUp(e: KeyboardEvent): void {
     this.keys.delete(e.code);
     if (e.code === 'Space') this.input.releaseJump();
-    if (e.code === 'ShiftLeft' || e.code === 'ShiftRight') this.input.releaseClaw();
+    if (e.code === 'ShiftLeft' || e.code === 'ShiftRight') this.input.runHeld = false;
+    if (e.code === 'KeyE') this.input.releaseClaw();
   }
 
   private onMouseMove(e: MouseEvent): void {
@@ -104,6 +118,7 @@ export class KeyboardMouseInput {
     this.keys.clear();
     this.input.releaseJump();
     this.input.releaseClaw();
+    this.input.runHeld = false;
   }
 
   private listen(target: EventTarget, type: string, fn: (e: Event) => void): void {
