@@ -1,7 +1,7 @@
 /**
  * スマホ用の画面内操作部品（見た目だけ）。
  * - 左側：仮想ジョイスティック（触れた位置に出る）
- * - 右下：ジャンプボタン、爪ボタン、走るボタン（押している間だけ速い）
+ * - 右下：ジャンプボタン、爪ボタン、歩くボタン（押している間だけ遅い）
  * 入力の処理は TouchInput が行う。
  */
 export class TouchControls {
@@ -9,7 +9,7 @@ export class TouchControls {
   readonly layer: HTMLDivElement;
   readonly jumpButton: HTMLButtonElement;
   readonly clawButton: HTMLButtonElement;
-  readonly runButton: HTMLButtonElement;
+  readonly walkButton: HTMLButtonElement;
   /** ジョイスティックの可動半径 [px] */
   readonly joystickRadius = 56;
 
@@ -26,16 +26,16 @@ export class TouchControls {
     this.jumpButton.textContent = 'ジャンプ';
     this.clawButton = el('button', 'touch-btn touch-btn-claw');
     this.clawButton.textContent = '爪';
-    this.runButton = el('button', 'touch-btn touch-btn-run');
-    this.runButton.textContent = '走る';
+    this.walkButton = el('button', 'touch-btn touch-btn-walk');
+    this.walkButton.textContent = '歩く';
 
-    for (const b of [this.jumpButton, this.clawButton, this.runButton]) {
+    for (const b of [this.jumpButton, this.clawButton, this.walkButton]) {
       b.type = 'button';
       // 長押しメニューやフォーカス枠を出さない
       b.addEventListener('contextmenu', (e) => e.preventDefault());
     }
 
-    this.layer.append(this.joyBase, this.jumpButton, this.clawButton, this.runButton);
+    this.layer.append(this.joyBase, this.jumpButton, this.clawButton, this.walkButton);
     parent.appendChild(this.layer);
     this.hideJoystick();
   }

@@ -15,7 +15,8 @@ class Bot {
   private readonly tmp = new THREE.Vector3();
   readonly log: string[] = [];
   /**
-   * 走っているか。コースの跳躍はすべて走り（3.0）を前提に引いてあるので、ふだんは走る。
+   * 走っているか。猫はふだん走っていて、歩くボタンを押している間だけ遅くなる。
+   * コースの跳躍はすべて走り（3.0）を前提に引いてあるので、ふだんは走り。
    * 細い枝や梁の上など、行き過ぎると落ちる所だけ歩き（1.0）に落とす。
    */
   private running = true;
@@ -25,7 +26,7 @@ class Bot {
   /** 以後の移動を走りにする／歩きにする */
   setRunning(on: boolean): void {
     this.running = on;
-    this.g.input.runHeld = on;
+    this.g.input.walkHeld = !on;
   }
 
   get pos(): THREE.Vector3 {
@@ -44,7 +45,7 @@ class Bot {
     const dx = x - p.x;
     const dz = z - p.z;
     const d = Math.hypot(dx, dz);
-    this.g.input.runHeld = this.running;
+    this.g.input.walkHeld = !this.running;
     if (d > 1e-4) {
       this.g.input.moveX = dx / d;
       this.g.input.moveY = -dz / d;
@@ -187,6 +188,23 @@ class Bot {
     const p = this.pos;
     this.log.push(`${label}：(${p.x.toFixed(2)}, ${p.y.toFixed(2)}, ${p.z.toFixed(2)}) ${this.g.cat.mode}`);
   }
+}
+
+/**
+ * 急な斜面を「跳んで登れない」ことの確認（不具合の再発防止）。
+ *
+ * 斜面の下に猫を置き、上り方向へ走りながらジャンプを繰り返して、高さが上がらないことを見る。
+ * 以前は、立てない角度の面でも足元の判定が働かず、ジャンプを連打するとどんな斜面でも
+ * 登れてしまっていた（止まっているコンベアを登ってスイッチを無視できた）。
+ *
+ * @param limit 跳び終わったあと猫がいてよい高さの上限。これを超えていたら登れてしまっている
+ */
+function cannotClimb(g: Debug, label: string, from: [number, number, number], toward: [number, number], limit: number): string {
+  const bot = new Bot(g);
+  bot.start(from[0], from[1], from[2]);
+  for (let i = 0; i < 6; i++) bot.jumpToward(toward[0], toward[1], 2);
+  const y = bot.pos.y;
+  return `${label}：${y <= limit ? '✓ 登れない' : '✗ 登れてしまう'}（跳んだ後の高さ ${y.toFixed(2)} / 上限 ${limit}）`;
 }
 
 /** 塀の向こう（z < -7.3）の沢の地面にいるか */
@@ -333,6 +351,9 @@ export function runRouteTests(game: Game): string {
       + nl + '  ' + bot.log.join(nl + '  '));
   }
 
+  // 岩づたいには登れないこと（第4版で廃止した道が復活していないか）
+  results.push(cannotClimb(g, '岩C（上面 1.2）を跳んで登る', [-4.8, 0, -2.3], [-4.8, -3.4], 0.5));
+
   const report = results.join(nl);
   console.log(report);
   return report;
@@ -456,6 +477,10 @@ function runFactoryTest(game: Game): string {
     const cleared = g.cat.isResting;
     results.push(`工場ルート${route}：${cleared ? '✓ クリア' : '✗ 届かなかった'}` + nl + '  ' + bot.log.join(nl + '  '));
   }
+  // スイッチを入れずに、止まっているコンベア（53°）を跳んで登れないこと
+  for (const item of g.interactions.all) (item as { reset?: () => void }).reset?.();
+  results.push(cannotClimb(g, '止まっているコンベアを跳んで登る', [-4.2, 7.3, 1.9], [-2.1, 1.9], 7.6));
+
   const report = results.join(nl);
   console.log(report);
   return report;

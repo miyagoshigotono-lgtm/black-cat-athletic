@@ -35,7 +35,7 @@ export class TouchInput {
 
     this.bindButton(ui.jumpButton, () => input.pressJump(), () => input.releaseJump());
     this.bindButton(ui.clawButton, () => input.pressClaw(), () => input.releaseClaw());
-    this.bindButton(ui.runButton, () => { input.runHeld = true; }, () => { input.runHeld = false; });
+    this.bindButton(ui.walkButton, () => { input.walkHeld = true; }, () => { input.walkHeld = false; });
 
     // iOS Safari のピンチ操作による拡大を止める
     document.addEventListener('gesturestart', (e) => e.preventDefault());

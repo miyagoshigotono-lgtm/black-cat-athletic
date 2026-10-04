@@ -26,8 +26,12 @@ export class InputState {
   jumpHeld = false;
   /** 爪を押している（① では動作なし） */
   clawHeld = false;
-  /** 走るボタンを押している（押している間だけ速い） */
-  runHeld = false;
+  /**
+   * 歩くボタンを押している。
+   * 猫はふだん走っていて、**押している間だけ歩く**（遅くなる）。
+   * 細い枝・梁・棚の上など、行き過ぎると落ちる所で使う。
+   */
+  walkHeld = false;
 
   /** 押した瞬間のイベント（物理ステップで消費するまで保持） */
   private jumpQueued = false;
@@ -82,7 +86,7 @@ export class InputState {
     this.lookPitch = 0;
     this.jumpHeld = false;
     this.clawHeld = false;
-    this.runHeld = false;
+    this.walkHeld = false;
     this.jumpQueued = false;
     this.clawQueued = false;
   }

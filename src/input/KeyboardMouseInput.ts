@@ -1,7 +1,7 @@
 import { InputState, lookParams } from './InputState';
 
 /**
- * PC 用入力：WASD 移動・Space ジャンプ・Shift 走る・左クリック/E 爪、マウス視点（ポインターロック）。
+ * PC 用入力：WASD 移動・Space ジャンプ・Shift 歩く・左クリック/E 爪、マウス視点（ポインターロック）。
  * iOS Safari はポインターロック非対応のため、タッチ入力（TouchInput）とは別系統にしている。
  */
 export class KeyboardMouseInput {
@@ -94,15 +94,15 @@ export class KeyboardMouseInput {
       this.input.pressJump();
       e.preventDefault();
     }
-    // 走る＝Shift（押している間）。Ctrl・Alt はブラウザのショートカットとぶつかるので使わない
-    if (e.code === 'ShiftLeft' || e.code === 'ShiftRight') this.input.runHeld = true;
+    // 歩く＝Shift（押している間）。Ctrl・Alt はブラウザのショートカットとぶつかるので使わない
+    if (e.code === 'ShiftLeft' || e.code === 'ShiftRight') this.input.walkHeld = true;
     if (e.code === 'KeyE') this.input.pressClaw();
   }
 
   private onKeyUp(e: KeyboardEvent): void {
     this.keys.delete(e.code);
     if (e.code === 'Space') this.input.releaseJump();
-    if (e.code === 'ShiftLeft' || e.code === 'ShiftRight') this.input.runHeld = false;
+    if (e.code === 'ShiftLeft' || e.code === 'ShiftRight') this.input.walkHeld = false;
     if (e.code === 'KeyE') this.input.releaseClaw();
   }
 
@@ -118,7 +118,7 @@ export class KeyboardMouseInput {
     this.keys.clear();
     this.input.releaseJump();
     this.input.releaseClaw();
-    this.input.runHeld = false;
+    this.input.walkHeld = false;
   }
 
   private listen(target: EventTarget, type: string, fn: (e: Event) => void): void {

@@ -54,6 +54,8 @@ export class CatController {
   private readonly tmpDir = new THREE.Vector3();
   /** 向き変更の判定用（本体より少しだけ小さい同じ形） */
   private readonly turnTestShape: RAPIER.RoundCuboid;
+  /** 接触情報の受け皿（毎フレーム作り直さない） */
+  private readonly collisionOut = new RAPIER.CharacterCollision();
   /** 段差の乗り越え判定用（本体と同じ形） */
   private readonly bodyShape: RAPIER.RoundCuboid;
   private readonly castRot = { x: 0, y: 0, z: 0, w: 1 };
@@ -152,8 +154,8 @@ export class CatController {
     }
     const inputLen = Math.min(1, dir.length());
     if (inputLen > 1e-4) dir.normalize();
-    // 走るボタンを押している間だけ速い（勢いはそのままジャンプの飛距離になる）
-    const speed = input.runHeld ? p.runSpeed : p.walkSpeed;
+    // ふだんは走り、歩くボタンを押している間だけ遅い（勢いはそのままジャンプの飛距離になる）
+    const speed = input.walkHeld ? p.walkSpeed : p.runSpeed;
     const targetVx = dir.x * speed * inputLen;
     const targetVz = dir.z * speed * inputLen;
 
@@ -227,7 +229,7 @@ export class CatController {
 
     // 急な斜面には立てない（岩の丸い側面に着地しても、そこからは跳べず滑り落ちる）
     if (this.grounded && !carried) {
-      const support = this.supportNormal(moved);
+      const support = this.supportNormal();
       if (support && support.y < COS_MAX_SLOPE) {
         this.grounded = false;
         this.slideDownhill(dt, support);
@@ -334,37 +336,27 @@ export class CatController {
   }
 
   /**
-   * 足元を受けている面の向き（法線）を返す。接地していなければ null。
-   * 底面の中央と四隅から真下へ線を飛ばし、いちばん平らな面を採る
-   * （丸い岩の上では、1本だけだと線が横をすり抜けて遠くの地面を拾うことがあるため）。
+   * 足元を受けている面の向き（法線）を返す。受けている面が無ければ null。
+   *
+   * 直前の computeColliderMovement がぶつかった相手の**接触法線**（normal1：相手の面から外向き）
+   * のうち、いちばん上を向いている物を採る。
+   *
+   * 以前は体の下へ光線を飛ばして調べていたが、斜面ではこれが働かなかった。
+   * 猫の当たり判定は斜面に合わせて傾かないので、53° の面の上では
+   * 体の中心から面までの垂直距離が 0.42 ほどになり、光線の長さ（0.18）がまったく届かない。
+   * その結果「足元に何も無い＝判定しない」となり、急な斜面に立てて跳んで登れてしまっていた
+   * （止まっているコンベアを跳んで登れる、という不具合の原因）。
    */
-  private supportNormal(moved: RAPIER.Vector): RAPIER.Vector | null {
-    const pos = this.body.translation();
-    const cx = pos.x + moved.x;
-    const cy = pos.y + moved.y;
-    const cz = pos.z + moved.z;
-    const sin = Math.sin(this.facing);
-    const cos = Math.cos(this.facing);
-    const halfW = CAT_SHAPE.width / 2 - CAT_SHAPE.border;
-    const halfL = CAT_SHAPE.length / 2 - CAT_SHAPE.border;
-    // 中心から下へ「体の半分＋接触マージン＋少し」まで。これに届く面が体を受けている面
-    const reach = CAT_SHAPE.height / 2 + CAT_SHAPE.offset + 0.04;
-    const flags = RAPIER.QueryFilterFlags.EXCLUDE_SENSORS;
+  private supportNormal(): RAPIER.Vector | null {
     let best: RAPIER.Vector | null = null;
-    for (const [sx, sz] of GROUND_SAMPLES) {
-      const lx = sx * halfW;
-      const lz = sz * halfL;
-      const from = { x: cx + lx * cos + lz * sin, y: cy, z: cz - lx * sin + lz * cos };
-      const hit = this.world.castRayAndGetNormal(
-        new RAPIER.Ray(from, { x: 0, y: -1, z: 0 }),
-        reach,
-        true,
-        flags,
-        undefined,
-        this.collider,
-      );
+    const count = this.controller.numComputedCollisions();
+    for (let i = 0; i < count; i++) {
+      const hit = this.controller.computedCollision(i, this.collisionOut);
       if (!hit) continue;
-      if (!best || hit.normal.y > best.y) best = hit.normal;
+      const n = hit.normal1;
+      // 横や天井との接触は足元ではない
+      if (n.y <= 0.05) continue;
+      if (!best || n.y > best.y) best = { x: n.x, y: n.y, z: n.z };
     }
     return best;
   }
@@ -703,10 +695,6 @@ export interface ClimbSurface {
   thickness: number;
 }
 
-/** 足元の面を調べる位置（体の中心を (0,0) とした、左右・前後の割合） */
-const GROUND_SAMPLES: ReadonlyArray<readonly [number, number]> = [
-  [0, 0], [0, 0.8], [0, -0.8], [0.8, 0.8], [-0.8, 0.8], [0.8, -0.8], [-0.8, -0.8],
-];
 /** コンベアに運ばれている間だけ許す、足が掛かる面の角度 [度] */
 const CARRIED_SLOPE_DEG = 70;
 /** これより急な面には立てない（cos で比べる） */
