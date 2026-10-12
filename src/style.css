@@ -358,3 +358,21 @@ body {
   bottom: calc(env(safe-area-inset-bottom) + 118px);
   font-size: 14px;
 }
+
+/* ステージ選択からシリーズのタイトル画面（ねこのアクション）へ戻る */
+.stage-select-back {
+  margin-top: 16px;
+  padding: 8px 20px;
+  font-size: 12px;
+  letter-spacing: 0.04em;
+  color: #cfd3d8;
+  text-decoration: none;
+  border: 1px solid rgba(255, 255, 255, 0.25);
+  border-radius: 999px;
+}
+
+.stage-select-back:hover,
+.stage-select-back:active {
+  color: #101014;
+  background: #cfd3d8;
+}

@@ -37,9 +37,9 @@ export default defineConfig({
       injectRegister: 'auto',
       includeAssets: ['favicon.ico', 'apple-touch-icon-180x180.png', 'icon.svg'],
       manifest: {
-        name: '黒猫アスレチック（仮）',
-        short_name: '黒猫',
-        description: '猫として空間を攻略する3Dアスレチック（プロトタイプ）',
+        name: 'ねこのアクション２',
+        short_name: 'ねこ2',
+        description: '猫として空間を攻略する3Dアスレチック。「ねこのアクション」の続き',
         lang: 'ja',
         // base・start_url・scope・Service Worker のスコープを揃える
         start_url: base,
