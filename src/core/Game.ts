@@ -123,7 +123,8 @@ export class Game {
 
     this.lockHint = document.createElement('div');
     this.lockHint.className = 'lock-hint';
-    this.lockHint.textContent = 'クリックで操作開始（WASD 移動 / マウス 視点 / Space ジャンプ / Esc 解除）';
+    this.lockHint.textContent =
+      'クリックで操作開始（WASD 移動 / マウス 視点 / Space ジャンプ / 左クリック・E 爪 / Shift 歩く / Esc 解除）';
     document.body.appendChild(this.lockHint);
 
     // 一時停止メニュー（右上のボタン、または P キー）

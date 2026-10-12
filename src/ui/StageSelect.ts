@@ -61,8 +61,9 @@ export function showStageSelect(parent: HTMLElement, entries: StageEntry[]): Pro
 
     const help = document.createElement('div');
     help.className = 'stage-select-help';
-    help.textContent = 'PC：WASD 移動／マウス 視点／Space ジャンプ／Shift 爪　'
-      + 'スマホ：左で移動／右でスワイプ視点／右下のボタンでジャンプと爪';
+    help.textContent = '猫はふだん走っています。細い枝や梁の上では歩いてください。　'
+      + 'PC：WASD 移動／マウス 視点／Space ジャンプ／左クリック・E 爪／Shift 歩く　'
+      + 'スマホ：左で移動／右でスワイプ視点／右下のボタンでジャンプ・爪・歩く';
     el.appendChild(help);
 
     parent.appendChild(el);
